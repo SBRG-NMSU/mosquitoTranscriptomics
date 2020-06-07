@@ -69,9 +69,9 @@ p3 <- ggplot(df1Disagree, aes(x = log10(`Ent Prim + Ser inf 1`+ 1), y = log10(`E
   annotate("label", x = 2, y = 6, label = expression(italic(r) == 0.978), size = 8)+
   ggtitle("3 versus 1")
 
-png(file = "Plots/Disagreement1.png", height = 4, width = 12, units = "in", res = 300)
+# png(file = "Plots/Disagreement1.png", height = 4, width = 12, units = "in", res = 300)
 gridExtra::grid.arrange(p3, p1, p2, ncol = 3)
-dev.off()
+# dev.off()
 
 rm(df1Disagree, p1, p2, p3)
 
@@ -119,7 +119,7 @@ contrastDF2$Comparison <- factor(contrastDF2$Comparison, levels =
 contrastDF2$volLabel <- ifelse(contrastDF2$padj < 0.05 & abs(contrastDF2$log2FoldChange) > 2.5, 
                                gsub("AgaP_", "", contrastDF2$gene), "")
 
-png(file = "Plots/PrimingVolcano1.png", height = 4, width = 12, units = "in", res = 600)
+# png(file = "Plots/PrimingVolcano1.png", height = 4, width = 12, units = "in", res = 600)
 set.seed(3333)
 ggplot(contrastDF2 %>% filter(padj < 1.0), aes(x = log2FoldChange, y = -log10(padj), label = volLabel)) + 
   geom_point(shape = 21, color = "grey30", fill = "dodgerblue", alpha = .5, size = .65) + 
@@ -128,7 +128,7 @@ ggplot(contrastDF2 %>% filter(padj < 1.0), aes(x = log2FoldChange, y = -log10(pa
   geom_hline(yintercept = 1.30103, lwd = .25, lty = 2) + 
   labs(x = expression(paste(log[2], "(Fold Change)")), y = expression(paste(-log[10], "(adjusted p-value)"))) +
   facet_grid(~Comparison)
-dev.off()
+# dev.off()
 
 # Priming concordant-discordant analysis:
 contrastDF2a <- contrastDF2 %>% filter(!(pheno2 == "Enterobacter_Priming" & pheno1 ==  "Serratia_Priming"))  %>% select(-pheno2)
@@ -154,14 +154,14 @@ contrastDF2a$lab <- contrastDF2a$gene
 contrastDF2a$lab <- gsub("AgaP_", "", contrastDF2a$lab)
 contrastDF2a$lab[!(abs(contrastDF2a$log2FoldChange_eP) > 2.5 | abs(contrastDF2a$log2FoldChange_sP) > 2.5)] <- ""
 
-png(file = "Plots/PrimingAgreement1.png", height = 5, width = 6.25, units = "in", res = 300)
+# png(file = "Plots/PrimingAgreement1.png", height = 5, width = 6.25, units = "in", res = 300)
 set.seed(3)
 ggplot(contrastDF2a, aes(x = log2FoldChange_eP, y = log2FoldChange_sP, label = lab)) + 
   geom_point(color = "dodgerblue", shape = 1, show.legend = FALSE) + 
   geom_text_repel(size = 2, segment.colour = "grey30", segment.alpha = .5) +
   geom_vline(xintercept = 0, lty = 2, lwd = .25) + geom_hline(yintercept = 0, lty = 2, lwd = .25) +
   labs(x = "Enterobacter Priming / Naive (Log2 FC)", y = "Serratia Priming / Naive (Log2 FC)") 
-dev.off()
+# dev.off()
 
 # Comparison of priming types:
 contrastDF2c <- contrastDF2 %>% filter(pheno1 == "Enterobacter_Priming" & pheno2 == "Serratia_Priming" & padj < .05)
@@ -181,14 +181,37 @@ rlog1b <- t(rlog1b)
 # rlogPrime <- rlog1[, grepl("Serratia Priming", colnames(rlog1)) | grepl("Enterobacter Priming", colnames(rlog1)) |
 #                                                       grepl("Naive", colnames(rlog1))]
 
-# Entropy filter:
-entropyFun <- function(x) entropy::entropy(entropy::discretize(x, 10), unit = "log2")
-colEntropies <- apply(as.matrix(rlog1), 2, entropyFun)
-colEntropiesb <- apply(as.matrix(rlog1b), 2, entropyFun)
+# Information gain:
+rlog1Temp <- as.data.frame(rlog1)
+rlog1Tempb <- as.data.frame(rlog1b)
 
-hist(colEntropies)
-rlog2 <- rlog1[, colEntropies > 1] # 11,987
-rlog2b <- rlog1b[, colEntropiesb > 1] # 11,990
+rlog1Temp$oldSampName <- rownames(rlog1Temp)
+rlog1Tempb$oldSampName <- rownames(rlog1Tempb)
+
+rlog1Temp <- colData1 %>% select(oldSampName, pheno) %>% left_join(rlog1Temp) %>% select(-oldSampName)
+rlog1Tempb <- colData1b %>% select(oldSampName, pheno) %>% left_join(rlog1Tempb) %>% select(-oldSampName)
+
+rlog1Entropy <- FSelectorRcpp::information_gain(pheno ~ ., data = rlog1Temp)
+rlog1Entropyb <- FSelectorRcpp::information_gain(pheno ~ ., data = rlog1Tempb)
+
+rlog1Entropy <- rlog1Entropy %>% select(gene = attributes, infoGain = importance)
+rlog1Entropyb <- rlog1Entropyb %>% select(gene = attributes, infoGain = importance)
+
+# Entropy filter:
+entropyFun <- function(x) entropy::entropy(entropy::discretize(x, 8), unit = "log2")
+colEntropies <- apply(as.matrix(rlog1), 2, entropyFun)
+rlog1Entropy <- rlog1Entropy %>% left_join(data.frame(gene = names(colEntropies), entropy = colEntropies))
+
+colEntropiesb <- apply(as.matrix(rlog1b), 2, entropyFun)
+rlog1Entropyb <- rlog1Entropyb %>% left_join(data.frame(gene = names(colEntropiesb), entropy = colEntropiesb))
+
+rm(rlog1Temp, rlog1Tempb, colEntropies, colEntropiesb)
+
+# Histograms
+hist(rlog1Entropy$entropy)
+hist(rlog1Entropy$infoGain)
+median(rlog1Entropy$entropy)
+median(rlog1Entropy$infoGain)
 
 ############ Multivariate visualization ############
 pca1 <- prcomp(scale(rlog2, scale = FALSE))
@@ -244,6 +267,13 @@ dev.off()
 rm(pca1, pca2, pca1Scores, pca2Scores, PCA3D, colEntropies, colEntropiesb)
 
 ############ WGCNA "fitting" ############
+
+# Entropy filters on both:
+rlog2 <- rlog1[, (rlog1Entropy$entropy > quantile(rlog1Entropy$entropy)['75%'] | 
+                    rlog1Entropy$infoGain > quantile(rlog1Entropy$infoGain)['75%'])] # 4,973
+rlog2b <- rlog1b[, (rlog1Entropyb$entropy > quantile(rlog1Entropyb$entropy)['75%'] | 
+                      rlog1Entropyb$infoGain > quantile(rlog1Entropyb$infoGain)['75%'])] # 4,973
+
 powers <- 1:20
 sft <- WGCNA::pickSoftThreshold(rlog2b, powerVector = powers, verbose = 5)
 par(mfrow = c(1, 2))
@@ -258,7 +288,7 @@ abline(h = 0.80, col = "red")
 plot(sft$fitIndices[,1], sft$fitIndices[,5], xlab = "Soft Threshold (power)", ylab = "Mean Connectivity", type = "n",
      main = paste("Mean connectivity"))
 text(sft$fitIndices[,1], sft$fitIndices[,5], labels = powers, col = "red")
-softPower <- 5
+softPower <- 6
 par(oldPar)
 
 # Adjacency and distance matrices
@@ -290,7 +320,7 @@ modDF <- data.frame(gene = rownames(TOM), module = dynamicColors)
 
 ############ Module eigengenes ############
 mEigen1 <- WGCNA::moduleEigengenes(rlog2b, dynamicColors, impute = FALSE, nPC = 1, align = "along average", excludeGrey = TRUE, 
-                 grey = if (is.numeric(colors)) 0 else "grey", softPower = 5, scale = TRUE,
+                 grey = if (is.numeric(colors)) 0 else "grey", softPower = 6, scale = TRUE,
                  verbose = 5, indent = 1)
 
 save.image(file = "Data/running_20200606.RData")
@@ -317,10 +347,15 @@ for(i in 1:nrow(comparisons)){
     glm1LRT <- anova(glm0, glm1, test = "LRT")$`Pr(>Chi)`[2]
     dfTemp2 <- data.frame(pheno1 = comparisons$pheno1[i], pheno2 = comparisons$pheno2[i], ME = mEColors[j], lrtP = glm1LRT)
     dfTemp3 <- rbind(dfTemp3, dfTemp2)
+    cat("i is ", i, "j is ", j, "\n")
   }
 }
 
 # MElightyellow heatmap
-dfTemp4 <- rlog2b[grepl("Naive", rownames(rlog2b)) | grepl("Enterobacter Priming", rownames(rlog2b)) | grepl("Serratia Priming", rownames(rlog2b)), 
-                  colnames(rlog2b) %in% modDF$gene[modDF$module == "lightyellow"]]
-heatmap(dfTemp4)
+dfTemp4 <- rlog2b[grepl("Priming", rownames(rlog2b)) | grepl("Naive", rownames(rlog2b)), 
+                  colnames(rlog2b) %in% 
+                    modDF$gene[modDF$module %in% c("salmon", "grey60", "darkturquoise", "paleturquoise", "purple")]]
+dfTemp4b <- rlog2b[, colnames(rlog2b) %in% 
+                    modDF$gene[modDF$module %in% c("salmon")]]
+heatmap(scale(dfTemp4))
+heatmap(scale(dfTemp4b))
