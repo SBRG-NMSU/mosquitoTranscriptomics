@@ -23,6 +23,9 @@ df1 <- df1[-rmExtra1,]
 rownames(df1) <- df1$Name
 df1$Name <- NULL
 
+# Data with severe outlier removed:
+df1b <- df1[, !(names(df1) ==  "Ent Prim + Ser inf 2")]
+
 # Column (phenotype) data:
 colData1 <- data.frame(oldSampName = names(df1))
 colData1$sampName <- gsub(" ", "_", gsub(" \\+ ", "_p_", colData1$oldSampName))
@@ -30,23 +33,63 @@ colData1$pheno <- substr(colData1$sampName, start = 1, stop = nchar(colData1$sam
 colData1$rep <- substr(colData1$sampName, start = nchar(colData1$sampName), stop = nchar(colData1$sampName))
 colData1$pheno <- as.factor(colData1$pheno)
 
+# Phenotype data w/o outlier:
+colData1b <- colData1 %>% filter(oldSampName != "Ent Prim + Ser inf 2")
+
 # Round fractional counts:
 df1 <- round(df1) # 12,723 transcripts
+df1b <- round(df1b)
 
 # Filter out transcripts w/ 0 counts:
 filter1 <- apply(df1, 1, function(x) sum(x == 0) == 30)
-df1 <- df1[!filter1, ] 
+filter1b <- apply(df1b, 1, function(x) sum(x == 0) == 29)
+df1 <- df1[!filter1, ] # 12,104
+df1b <- df1b[!filter1b, ] # 12,092
+
+############ Outlier dis-agreement ############
+# Data.frame for pairwise plots:
+df1Disagree <- df1 %>% select("Ent Prim + Ser inf 1", "Ent Prim + Ser inf 2", "Ent Prim + Ser inf 3")
+
+# Pairwise correlations:
+cor(log10(df1Disagree$`Ent Prim + Ser inf 1` + 1), log10(df1Disagree$`Ent Prim + Ser inf 2` + 1))
+cor(log10(df1Disagree$`Ent Prim + Ser inf 2` + 1), log10(df1Disagree$`Ent Prim + Ser inf 3` + 1))
+cor(log10(df1Disagree$`Ent Prim + Ser inf 1` + 1), log10(df1Disagree$`Ent Prim + Ser inf 3` + 1))
+
+# Pairwise plots
+p1 <- ggplot(df1Disagree, aes(x = log10(`Ent Prim + Ser inf 2` + 1), y = log10(`Ent Prim + Ser inf 1` + 1))) + 
+  geom_point(shape = 1, size = .75) + geom_smooth(method = "lm", se = FALSE) + xlim(0, 8) + ylim(0, 8) +
+  annotate("label", x = 2, y = 6, label = expression(italic(r) == 0.780), size = 8) +
+  ggtitle("1 versus 2")
+p2 <- ggplot(df1Disagree, aes(x = log10(`Ent Prim + Ser inf 2`+ 1), y = log10(`Ent Prim + Ser inf 3`+ 1))) + 
+  geom_point(shape = 1, size = .75) + geom_smooth(method = "lm", se = FALSE) + xlim(0, 8) + ylim(0, 8) +
+  annotate("label", x = 2, y = 6, label = expression(italic(r) == 0.821), size = 8)+
+  ggtitle("3 versus 2")
+p3 <- ggplot(df1Disagree, aes(x = log10(`Ent Prim + Ser inf 1`+ 1), y = log10(`Ent Prim + Ser inf 3`+ 1))) + 
+  geom_point(shape = 1, size = .75) + geom_smooth(method = "lm", se = FALSE) + xlim(0, 8) + ylim(0, 8) +
+  annotate("label", x = 2, y = 6, label = expression(italic(r) == 0.978), size = 8)+
+  ggtitle("3 versus 1")
+
+png(file = "Plots/Disagreement1.png", height = 4, width = 12, units = "in", res = 300)
+gridExtra::grid.arrange(p3, p1, p2, ncol = 3)
+dev.off()
+
+rm(df1Disagree, p1, p2, p3)
 
 ############ Univariate analysis ############
+# Set up DESeq2 analysis:
 des1 <- DESeqDataSetFromMatrix(countData = df1, colData = colData1, design = ~ pheno)
+des1b <- DESeqDataSetFromMatrix(countData = df1b, colData = colData1b, design = ~ pheno)
 des1 <- DESeq(des1)
+des1b <- DESeq(des1b)
+
+# Make data.frame of comparisons between priming and Naive:
 contrastDF1 <- data.frame(pheno1 = c("Enterobacter_Priming", "Serratia_Priming", "Serratia_Priming"),
                           pheno2 = c("Naive", "Naive", "Enterobacter_Priming"))
 
 # Make comparisons:
 contrastDF2 <- list()
 for(i in 1:nrow(contrastDF1)){
-  temp1 <- as.data.frame(results(des1, contrast = c("pheno", contrastDF1$pheno1[i], contrastDF1$pheno2[i]), cooksCutoff = Inf))
+  temp1 <- as.data.frame(results(des1b, contrast = c("pheno", contrastDF1$pheno1[i], contrastDF1$pheno2[i]), cooksCutoff = Inf))
   temp1$lfcLower <- temp1$log2FoldChange - qnorm(0.975) * temp1$lfcSE
   temp1$lfcUpper <- temp1$log2FoldChange + qnorm(0.975) * temp1$lfcSE
   temp1$pheno1 <- contrastDF1$pheno1[i]
@@ -55,13 +98,13 @@ for(i in 1:nrow(contrastDF1)){
   contrastDF2[[i]] <- temp1
 }
 contrastDF2 <- do.call("rbind", contrastDF2)
-save("contrastDF2", "df1", file = "Results/contrastDF2_20200605.RData")
+# save("contrastDF2", "df1b", file = "Results/contrastDF2_20200606.RData")
 
 # If p-adjusted is NA make it 1:
 contrastDF2$padj[is.na(contrastDF2$padj)] <- 1.0
 
 # LRT:
-des0 <- DESeq(des1, test="LRT", reduced = ~ 1)
+des0 <- DESeq(des1b, test="LRT", reduced = ~ 1)
 res0 <- as.data.frame(results(des0))
 
 # Volcano Plots:
@@ -124,19 +167,28 @@ dev.off()
 contrastDF2c <- contrastDF2 %>% filter(pheno1 == "Enterobacter_Priming" & pheno2 == "Serratia_Priming" & padj < .05)
 
 rm(constrastDF2b, contrastDF1, contrastDF2a, contrastDF2a1, contrastDF2a2, contrastDF2c, des0,
-   res0, temp1, i)
+   res0, temp1, i, filter1, rmExtra1)
 
 ############ Transformation & Entropy filtering ############
+# Get regularized log expression:
 rlog1 <- rlog(des1, blind = TRUE)
+rlog1b <- rlog(des1b, blind = TRUE)
 rlog1 <- assay(rlog1)
+rlog1b <- assay(rlog1b)
 rlog1 <- t(rlog1)
+rlog1b <- t(rlog1b)
+
 # rlogPrime <- rlog1[, grepl("Serratia Priming", colnames(rlog1)) | grepl("Enterobacter Priming", colnames(rlog1)) |
 #                                                       grepl("Naive", colnames(rlog1))]
 
+# Entropy filter:
 entropyFun <- function(x) entropy::entropy(entropy::discretize(x, 10), unit = "log2")
 colEntropies <- apply(as.matrix(rlog1), 2, entropyFun)
+colEntropiesb <- apply(as.matrix(rlog1b), 2, entropyFun)
+
 hist(colEntropies)
 rlog2 <- rlog1[, colEntropies > 1] # 11,987
+rlog2b <- rlog1b[, colEntropiesb > 1] # 11,990
 
 ############ Multivariate visualization ############
 pca1 <- prcomp(scale(rlog2, scale = FALSE))
@@ -166,3 +218,109 @@ PCA3D
 png(filename = "Plots/hclust.png", height = 6.5, width = 6.5, units = "in", res = 300)
 plot(hclust(dist(rlog2), method = "ward.D2"))
 dev.off()
+
+############ Sensitivity analysis ############
+pca2 <- prcomp(scale(rlog2[rownames(rlog2) != "Ent Prim + Ser inf 2",], scale = FALSE))
+pca2Scores <- as.data.frame(pca2$x[,1:4])
+pca2Scores$oldSampName <- rownames(pca2Scores)
+pca2Scores <- colData1 %>% inner_join(pca2Scores)
+
+png(filename = "Plots/PC1vsPC2_sens.png", height = 4.5, width = 6.5, units = "in", res = 300)
+set.seed(3)
+ggplot(pca2Scores, aes(x = PC1, y = PC2, color = pheno, label = oldSampName)) + geom_point() +
+  geom_text_repel(size = 2)
+dev.off()
+
+png(filename = "Plots/PC3vsPC4_sens.png", height = 4.5, width = 6.5, units = "in", res = 300)
+set.seed(3)
+ggplot(pca2Scores, aes(x = PC3, y = PC4, color = pheno, label = oldSampName)) + geom_point() +
+  geom_text_repel(size = 2)
+dev.off()
+
+png(filename = "Plots/hclust_sens.png", height = 6.5, width = 6.5, units = "in", res = 300)
+plot(hclust(dist(rlog2[rownames(rlog2) != "Ent Prim + Ser inf 2",]), method = "ward.D2"))
+dev.off()
+
+rm(pca1, pca2, pca1Scores, pca2Scores, PCA3D, colEntropies, colEntropiesb)
+
+############ WGCNA "fitting" ############
+powers <- 1:20
+sft <- WGCNA::pickSoftThreshold(rlog2b, powerVector = powers, verbose = 5)
+par(mfrow = c(1, 2))
+# Scale-free topology fit index as a function of the soft-thresholding power
+plot(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
+     xlab = "Soft Threshold (power)", ylab = "Scale Free Topology Model Fit,signed R^2", type = "n",
+     main = paste("Scale independence"))
+text(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
+     labels = powers, col = "red")
+# this line corresponds to using an R^2 cut-off of h
+abline(h = 0.80, col = "red")
+plot(sft$fitIndices[,1], sft$fitIndices[,5], xlab = "Soft Threshold (power)", ylab = "Mean Connectivity", type = "n",
+     main = paste("Mean connectivity"))
+text(sft$fitIndices[,1], sft$fitIndices[,5], labels = powers, col = "red")
+softPower <- 5
+par(oldPar)
+
+# Adjacency and distance matrices
+adjacency <- WGCNA::adjacency(rlog2b, power = softPower) #corOptions="use = 'p', method = 'spearman'"
+# Turn adjacency into topological overlap
+TOM <- WGCNA::TOMsimilarity(adjacency)
+rownames(TOM) <- colnames(TOM) <- rownames(adjacency)
+dissTOM <- 1 - TOM
+tree <- hclust(as.dist(dissTOM), method = "average")
+
+# Module identification using dynamic tree cut:
+dynamicMods <- dynamicTreeCut::cutreeDynamic(dendro = tree, distM = dissTOM, deepSplit = 2, pamRespectsDendro = TRUE,
+                           minClusterSize = 20, method = "hybrid")
+dynamicColors <- WGCNA::labels2colors(dynamicMods)
+
+# Plot dendogram and module assignment:
+png(filename = "Plots/WGCNA_Dendro1.png",height = 6, width = 10, units = "in", res = 600)
+WGCNA::plotDendroAndColors(tree, cbind(dynamicColors), "Module Assignment", dendroLabels = FALSE, hang = 0.0, 
+                           addGuide = TRUE, guideHang = 0.0, main = "Gene Modules")
+dev.off()
+
+# Plot distnace matrix heatmap w/ module assignment
+png(filename = "Plots/WGCNA_Heatmap1.png", height = 6, width = 6, units = "in", res = 600)
+WGCNA::TOMplot(dissTOM, tree, dynamicColors, main = "Module heatmap")
+dev.off()
+
+# Module-gene mapping:
+modDF <- data.frame(gene = rownames(TOM), module = dynamicColors)
+
+############ Module eigengenes ############
+mEigen1 <- WGCNA::moduleEigengenes(rlog2b, dynamicColors, impute = FALSE, nPC = 1, align = "along average", excludeGrey = TRUE, 
+                 grey = if (is.numeric(colors)) 0 else "grey", softPower = 5, scale = TRUE,
+                 verbose = 5, indent = 1)
+
+save.image(file = "Data/running_20200606.RData")
+
+# Make into long data.frame:
+mEigen2 <- mEigen1$eigengenes
+mEigen2$oldSampName <- rownames(mEigen2)
+mEigen2 <- mEigen2 %>% gather(key = "ME", value = "value", -oldSampName)
+mEigen2 <- colData1b %>% left_join(mEigen2)
+
+# List of all module colors:
+mEColors <- unique(mEigen2$ME)
+
+# Make comparison of ME's:
+comparisons <- data.frame(pheno1 = c("Naive", "Naive", "Enterobacter_Priming"), 
+                          pheno2 = c("Enterobacter_Priming", "Serratia_Priming", "Serratia_Priming"))
+dfTemp3 <- data.frame()
+for(i in 1:nrow(comparisons)){
+  for(j in 1:length(mEColors)){
+    dfTemp1 <- mEigen2 %>% filter(pheno %in% c(comparisons$pheno1[i], comparisons$pheno2[i]) & ME == mEColors[j])
+    dfTemp1$pheno <- factor(dfTemp1$pheno, levels = c(comparisons$pheno1[i], comparisons$pheno2[i]))
+    glm1 <- glm(pheno ~ value, data = dfTemp1, family = "binomial")
+    glm0 <- update(glm1, . ~ . -value)
+    glm1LRT <- anova(glm0, glm1, test = "LRT")$`Pr(>Chi)`[2]
+    dfTemp2 <- data.frame(pheno1 = comparisons$pheno1[i], pheno2 = comparisons$pheno2[i], ME = mEColors[j], lrtP = glm1LRT)
+    dfTemp3 <- rbind(dfTemp3, dfTemp2)
+  }
+}
+
+# MElightyellow heatmap
+dfTemp4 <- rlog2b[grepl("Naive", rownames(rlog2b)) | grepl("Enterobacter Priming", rownames(rlog2b)) | grepl("Serratia Priming", rownames(rlog2b)), 
+                  colnames(rlog2b) %in% modDF$gene[modDF$module == "lightyellow"]]
+heatmap(dfTemp4)
