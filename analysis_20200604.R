@@ -83,8 +83,12 @@ des1 <- DESeq(des1)
 des1b <- DESeq(des1b)
 
 # Make data.frame of comparisons between priming and Naive:
-contrastDF1 <- data.frame(pheno1 = c("Enterobacter_Priming", "Serratia_Priming", "Serratia_Priming"),
-                          pheno2 = c("Naive", "Naive", "Enterobacter_Priming"))
+contrastDF1 <- data.frame(pheno1 = c("Enterobacter_Priming", "Serratia_Priming", "Serratia_Priming",
+                                     "Enterobacter_infection", "Serratia_Infection",
+                                     "Ent_Prim_p_Ent_inf", "Ser_Prim_p_Ser_inf"),
+                          pheno2 = c("Naive", "Naive", "Enterobacter_Priming", 
+                                     "Injury_Control", "Injury_Control",
+                                     "Enterobacter_infection", "Serratia_Infection"))
 
 # Make comparisons:
 contrastDF2 <- list()
@@ -111,9 +115,15 @@ res0 <- as.data.frame(results(des0))
 contrastDF2 <- contrastDF2 %>% mutate(Comparison = case_when(
   pheno2 == "Enterobacter_Priming" & pheno1 ==  "Serratia_Priming" ~ "Serratia vs. Enterobacter",
   pheno2 == "Naive" & pheno1 == "Serratia_Priming" ~ "Serratia vs. Naive",
-  pheno2 == "Naive" & pheno1 == "Enterobacter_Priming" ~ "Enterobacter vs. Naive"))
+  pheno2 == "Naive" & pheno1 == "Enterobacter_Priming" ~ "Enterobacter vs. Naive",
+  pheno2 == "Injury_Control" & pheno1 == "Enterobacter_infection" ~ "Ent Inf vs Inj Ctrl",
+  pheno2 == "Injury_Control" & pheno1 == "Serratia_Infection" ~ "Ser Inf vs Inj Ctrl",
+  pheno2 == "Enterobacter_infection" & pheno1 == "Ent_Prim_p_Ent_inf" ~ "Ent Prim & Inf vs Ent Inf",
+  pheno2 == "Serratia_Infection" & pheno1 == "Ser_Prim_p_Ser_inf" ~ "Ser Prim & Inf vs Ser Inf"))
 contrastDF2$Comparison <- factor(contrastDF2$Comparison, levels = 
-                                   c("Enterobacter vs. Naive", "Serratia vs. Naive", "Serratia vs. Enterobacter"))
+                                   c("Enterobacter vs. Naive", "Serratia vs. Naive", "Serratia vs. Enterobacter",
+                                     "Ent Inf vs Inj Ctrl", "Ser Inf vs Inj Ctrl", "Ent Prim & Inf vs Ent Inf",
+                                     "Ser Prim & Inf vs Ser Inf"))
 
 # Add labels for volcano plot:
 contrastDF2$volLabel <- ifelse(contrastDF2$padj < 0.05 & abs(contrastDF2$log2FoldChange) > 2.5, 
@@ -121,7 +131,8 @@ contrastDF2$volLabel <- ifelse(contrastDF2$padj < 0.05 & abs(contrastDF2$log2Fol
 
 # png(file = "Plots/PrimingVolcano1.png", height = 4, width = 12, units = "in", res = 600)
 set.seed(3333)
-ggplot(contrastDF2 %>% filter(padj < 1.0), aes(x = log2FoldChange, y = -log10(padj), label = volLabel)) + 
+ggplot(contrastDF2 %>% filter(Comparison %in% c("Enterobacter vs. Naive", "Serratia vs. Naive", "Serratia vs. Enterobacter") & padj < 1.0), 
+       aes(x = log2FoldChange, y = -log10(padj), label = volLabel)) + 
   geom_point(shape = 21, color = "grey30", fill = "dodgerblue", alpha = .5, size = .65) + 
   geom_text_repel(size = 1.05, segment.colour = "grey30", segment.alpha = .5, segment.size = .25) +
   geom_vline(xintercept = -2.5, lwd = .25, lty = 2) + geom_vline(xintercept = 2.5, lwd = .25, lty = 2) +
@@ -129,6 +140,29 @@ ggplot(contrastDF2 %>% filter(padj < 1.0), aes(x = log2FoldChange, y = -log10(pa
   labs(x = expression(paste(log[2], "(Fold Change)")), y = expression(paste(-log[10], "(adjusted p-value)"))) +
   facet_grid(~Comparison)
 # dev.off()
+
+set.seed(3333)
+ggplot(contrastDF2 %>% filter(Comparison %in% c("Ent Inf vs Inj Ctrl", "Ser Inf vs Inj Ctrl", "Ent Prim & Inf vs Ent Inf",
+                                                "Ser Prim & Inf vs Ser Inf") & padj < 1.0), 
+       aes(x = log2FoldChange, y = -log10(padj), label = volLabel)) + 
+  geom_point(shape = 21, color = "grey30", fill = "dodgerblue", alpha = .5, size = .65) + 
+  geom_text_repel(size = 1.05, segment.colour = "grey30", segment.alpha = .5, segment.size = .25) +
+  geom_vline(xintercept = -2.5, lwd = .25, lty = 2) + geom_vline(xintercept = 2.5, lwd = .25, lty = 2) +
+  geom_hline(yintercept = 1.30103, lwd = .25, lty = 2) + 
+  labs(x = expression(paste(log[2], "(Fold Change)")), y = expression(paste(-log[10], "(adjusted p-value)"))) +
+  facet_wrap(~Comparison)
+
+# Concordant-discordant analysis:
+contrastDF2wFC <- contrastDF2 %>% select(gene, Comparison, log2FoldChange) %>% spread(key = Comparison, value = log2FoldChange)
+names(contrastDF2wFC)[names(contrastDF2wFC) != "gene"] <- paste0("FC_", names(contrastDF2wFC)[names(contrastDF2wFC) != "gene"])
+contrastDF2wAdjP <- contrastDF2 %>% select(gene, Comparison, padj) %>% spread(key = Comparison, value = padj)
+names(contrastDF2wAdjP)[names(contrastDF2wAdjP) != "gene"] <- 
+  paste0("AdjP_", names(contrastDF2wAdjP)[names(contrastDF2wAdjP) != "gene"])
+contrastDF2w <- contrastDF2wFC %>% left_join(contrastDF2wAdjP)
+
+cor(x = contrastDF2w$`FC_Ent Inf vs Inj Ctrl`, y = contrastDF2w$`FC_Ser Inf vs Inj Ctrl`)
+ggplot(contrastDF2w, aes(x = `FC_Ent Inf vs Inj Ctrl`, y = `FC_Ser Inf vs Inj Ctrl`)) + 
+  geom_point(color = "dodgerblue", shape = 1, show.legend = FALSE) + stat_smooth(method = "lm")
 
 # Priming concordant-discordant analysis:
 contrastDF2a <- contrastDF2 %>% filter(!(pheno2 == "Enterobacter_Priming" & pheno1 ==  "Serratia_Priming"))  %>% select(-pheno2)
