@@ -20,6 +20,8 @@ names(df1) <- gsub(" - total_read_count", "", names(df1))
 names(table(df1$Name))[table(df1$Name) > 1]
 rmExtra1 <- which(df1$Name == "tRNA-Leu")[2]
 df1 <- df1[-rmExtra1,]
+# Get rid of extra part in name:
+df1$Name <- gsub("AgaP_", "", df1$Name)
 rownames(df1) <- df1$Name
 df1$Name <- NULL
 
@@ -215,7 +217,6 @@ xtabs(~catE + catS, data = constrastDF2b)
 
 # Label some:
 contrastDF2a$lab <- contrastDF2a$gene
-contrastDF2a$lab <- gsub("AgaP_", "", contrastDF2a$lab)
 contrastDF2a$lab[!(abs(contrastDF2a$`FC_Enterobacter vs. Naive`) > 2.5 | 
                      abs(contrastDF2a$`FC_Serratia vs. Naive`) > 2.5)] <- ""
 
@@ -232,7 +233,7 @@ ggplot(contrastDF2a, aes(x = `FC_Enterobacter vs. Naive`, y = `FC_Serratia vs. N
 contrastDF2c <- contrastDF2 %>% filter(pheno1 == "Enterobacter_Priming" & pheno2 == "Serratia_Priming" & qvalue < .05)
 
 rm(constrastDF2b, contrastDF1, contrastDF2a, contrastDF2w, contrastDF2wQ, contrastDF2wFC, lowNCounts, des0,
-   res0, temp1, i, filter1, rmExtra1, filter1b)
+   res0, temp1, i, filter1, rmExtra1, filter1b, contrastDF2c)
 
 ############ Transformation & Entropy / Significance filtering ############
 # Get regularized log expression:
@@ -314,21 +315,21 @@ pca2Scores <- as.data.frame(pca2$x[,1:4])
 pca2Scores$oldSampName <- rownames(pca2Scores)
 pca2Scores <- colData1 %>% inner_join(pca2Scores)
 
-png(filename = "Plots/PC1vsPC2_sens.png", height = 4.5, width = 6.5, units = "in", res = 300)
+# png(filename = "Plots/PC1vsPC2_sens.png", height = 4.5, width = 6.5, units = "in", res = 300)
 set.seed(3)
 ggplot(pca2Scores, aes(x = PC1, y = PC2, color = pheno, label = oldSampName)) + geom_point() +
   geom_text_repel(size = 2)
-dev.off()
+# dev.off()
 
-png(filename = "Plots/PC3vsPC4_sens.png", height = 4.5, width = 6.5, units = "in", res = 300)
+# png(filename = "Plots/PC3vsPC4_sens.png", height = 4.5, width = 6.5, units = "in", res = 300)
 set.seed(3)
 ggplot(pca2Scores, aes(x = PC3, y = PC4, color = pheno, label = oldSampName)) + geom_point() +
   geom_text_repel(size = 2)
-dev.off()
+# dev.off()
 
-png(filename = "Plots/hclust_sens.png", height = 6.5, width = 6.5, units = "in", res = 300)
+# png(filename = "Plots/hclust_sens.png", height = 6.5, width = 6.5, units = "in", res = 300)
 plot(hclust(dist(rlog1b), method = "ward.D2"))
-dev.off()
+# dev.off()
 
 rm(pca1, pca2, pca1Scores, pca2Scores, PCA3D, colEntropies, colEntropiesb)
 
@@ -382,7 +383,6 @@ dev.off()
 # Module-gene mapping:
 modDF <- data.frame(gene = rownames(TOM), module = dynamicColors)
 
-############ Module eigengenes ############
 mEigen1 <- WGCNA::moduleEigengenes(rlog2b, dynamicColors, impute = FALSE, nPC = 1, align = "along average", 
                                    excludeGrey = TRUE, grey = if (is.numeric(colors)) 0 else "grey", 
                                    softPower = 9, scale = TRUE, verbose = 5, indent = 1)
@@ -390,6 +390,31 @@ mEigen1 <- WGCNA::moduleEigengenes(rlog2b, dynamicColors, impute = FALSE, nPC = 
 save.image(file = "Data/running_20200612.RData")
 load(file = "Data/running_20200612.RData")
 
+############ FGSEA analysis ############
+MElist <- list()
+for(color in unique(modDF$module)){
+  MElist[[color]] <- modDF$gene[modDF$module == color]
+}
+
+comps <- unique(contrastDF2$Comparison)
+fgseaRes <- list()
+for(i in 1:length(comps)){
+  comp <- comps[i]
+  comp2 <- contrastDF2[contrastDF2$Comparison == comp, c("gene", "stat")] 
+  comp2$stat <- abs(comp2$stat)
+  comp2 <- comp2 %>% deframe()
+  fgsea1 <- fgsea::fgsea(pathways = MElist, stats = comp2, nperm = 10000)
+  fgsea1$Comparison <- comp
+  fgseaRes[[i]] <- fgsea1
+  print(i)
+}
+fgseaRes <- do.call("rbind", fgseaRes)
+
+fgseaResP <- fgseaRes %>% select(pathway, Comparison, pval) %>% spread(key = "Comparison", value = "pval")
+fgseaResNES <- fgseaRes %>% select(pathway, Comparison, NES) %>% spread(key = "Comparison", value = "NES")
+fgseaRes2 <- fgseaResP %>% full_join(fgseaResNES, by = "pathway", suffix = c(".pValue", ".NES"))
+
+############ Module eigengenes ############
 # Make into long data.frame:
 mEigen2 <- mEigen1$eigengenes
 mEigen2$oldSampName <- rownames(mEigen2)
@@ -428,16 +453,70 @@ colData1b$pheno <- factor(colData1b$pheno, levels = c("Naive","Enterobacter_Prim
                                                       "Ser_Prim_p_Ser_inf", "Ent_Prim_p_Ser_inf", "Ser_Prim_p_Ent_inf"))
 colData1b <- colData1b %>% arrange(pheno, rep)
 colData1b$ord <- 1:nrow(colData1b)
+
+# Green module:
 greenTOMhClust <- hclust(as.dist(TOM[modDF$gene[modDF$module == "green"], modDF$gene[modDF$module == "green"]]),
                          method = "average")
 greenExpression <- scale(rlog2b[match(colData1b$oldSampName, rownames(rlog2b)), 
                                 modDF$gene[modDF$module == "green"]])
 greenExpression <- greenExpression[grepl("Injury|Infection|infection", rownames(greenExpression)),]
-png(filename = "Plots/WGCNA_Module1.png", height = 6, width = 18, units = "in", res = 600)
+png(filename = "Plots/WGCNA_Module_Green.png", height = 6, width = 18, units = "in", res = 600)
 greenColors <- WGCNA::numbers2colors(greenExpression, signed = TRUE, commonLim = FALSE)
 WGCNA::plotDendroAndColors(dendro = greenTOMhClust, colors = t(greenColors),
                            groupLabels = rownames(greenExpression),
-                           cex.dendroLabels = 0.25)
+                           cex.dendroLabels = 0.25, main = "")
+dev.off()
+
+# cyan module:
+cyanTOMhClust <- hclust(as.dist(TOM[modDF$gene[modDF$module == "cyan"], modDF$gene[modDF$module == "cyan"]]),
+                         method = "average")
+cyanExpression <- scale(rlog2b[match(colData1b$oldSampName, rownames(rlog2b)), 
+                                modDF$gene[modDF$module == "cyan"]])
+cyanExpression <- cyanExpression[grepl("Injury|Infection|infection", rownames(cyanExpression)),]
+png(filename = "Plots/WGCNA_Module_cyan.png", height = 6, width = 12, units = "in", res = 600)
+cyanColors <- WGCNA::numbers2colors(cyanExpression, signed = TRUE, commonLim = FALSE)
+WGCNA::plotDendroAndColors(dendro = cyanTOMhClust, colors = t(cyanColors),
+                           groupLabels = rownames(cyanExpression),
+                           cex.dendroLabels = 0.4, main = "")
+dev.off()
+
+# Saddle brown module:
+saddlebrownTOMhClust <- hclust(as.dist(TOM[modDF$gene[modDF$module == "saddlebrown"], modDF$gene[modDF$module == "saddlebrown"]]),
+                         method = "average")
+saddlebrownExpression <- scale(rlog2b[match(colData1b$oldSampName, rownames(rlog2b)), 
+                                modDF$gene[modDF$module == "saddlebrown"]])
+saddlebrownExpression <- saddlebrownExpression[grepl("Injury|Infection|infection", rownames(saddlebrownExpression)),]
+png(filename = "Plots/WGCNA_Module_saddlebrown.png", height = 6, width = 12, units = "in", res = 600)
+saddlebrownColors <- WGCNA::numbers2colors(saddlebrownExpression, signed = TRUE, commonLim = FALSE)
+WGCNA::plotDendroAndColors(dendro = saddlebrownTOMhClust, colors = t(saddlebrownColors),
+                           groupLabels = rownames(saddlebrownExpression),
+                           cex.dendroLabels = 0.75, main = "")
+dev.off()
+
+# Royal blue module:
+royalblueTOMhClust <- hclust(as.dist(TOM[modDF$gene[modDF$module == "royalblue"], modDF$gene[modDF$module == "royalblue"]]),
+                         method = "average")
+royalblueExpression <- scale(rlog2b[match(colData1b$oldSampName, rownames(rlog2b)), 
+                                modDF$gene[modDF$module == "royalblue"]])
+royalblueExpression <- royalblueExpression[grepl("Naive|Priming", rownames(royalblueExpression)),]
+png(filename = "Plots/WGCNA_Module_RoyalBlue.png", height = 6, width = 18, units = "in", res = 600)
+royalblueColors <- WGCNA::numbers2colors(royalblueExpression, signed = TRUE, commonLim = FALSE)
+WGCNA::plotDendroAndColors(dendro = royalblueTOMhClust, colors = t(royalblueColors),
+                           groupLabels = rownames(royalblueExpression),
+                           cex.dendroLabels = 0.75, main = "")
+dev.off()
+
+# White module:
+whiteTOMhClust <- hclust(as.dist(TOM[modDF$gene[modDF$module == "white"], modDF$gene[modDF$module == "white"]]),
+                             method = "average")
+whiteExpression <- scale(rlog2b[match(colData1b$oldSampName, rownames(rlog2b)), 
+                                    modDF$gene[modDF$module == "white"]])
+whiteExpression <- whiteExpression[grepl("Naive|Priming|Injury|Infection|infection", rownames(whiteExpression)),]
+png(filename = "Plots/WGCNA_Module_white.png", height = 6, width = 12, units = "in", res = 600)
+whiteColors <- WGCNA::numbers2colors(whiteExpression, signed = TRUE, commonLim = FALSE)
+WGCNA::plotDendroAndColors(dendro = whiteTOMhClust, colors = t(whiteColors),
+                           groupLabels = rownames(whiteExpression),
+                           cex.dendroLabels = 0.75, main = "")
 dev.off()
 
 # Make comparison of ME's:
