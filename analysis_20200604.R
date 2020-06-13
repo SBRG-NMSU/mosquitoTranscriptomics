@@ -388,6 +388,7 @@ mEigen1 <- WGCNA::moduleEigengenes(rlog2b, dynamicColors, impute = FALSE, nPC = 
                                    softPower = 9, scale = TRUE, verbose = 5, indent = 1)
 
 save.image(file = "Data/running_20200612.RData")
+load(file = "Data/running_20200612.RData")
 
 # Make into long data.frame:
 mEigen2 <- mEigen1$eigengenes
@@ -397,6 +398,47 @@ mEigen2 <- colData1b %>% left_join(mEigen2)
 
 # List of all module colors:
 mEColors <- unique(mEigen2$ME)
+
+# ME factor variable:
+mEigen2$pheno <- factor(mEigen2$pheno, levels = c("Naive","Enterobacter_Priming", "Serratia_Priming",
+                  "Injury_Control", "Enterobacter_infection", "Serratia_Infection", "Ent_Prim_p_Ent_inf",
+                  "Ser_Prim_p_Ser_inf", "Ent_Prim_p_Ser_inf", "Ser_Prim_p_Ent_inf"))
+levels(mEigen2$pheno)[levels(mEigen2$pheno) == "Enterobacter_infection"] <- "Enterobacter_Infection"
+
+# ANOVA of modules Eigengenes by group:
+MElmDF <- data.frame(ME = mEColors, overallP = NA, primingVSnaive = NA, infectionVSinjury = NA)
+for(i in 1:nrow(MElmDF)){
+  lm0 <- lm(value ~ 1, data = mEigen2 %>% filter(ME == MElmDF$ME[i]))
+  lm1 <- lm(value ~ pheno, data = mEigen2 %>% filter(ME == MElmDF$ME[i]))
+  MElmDF$overallP[i] <- anova(lm0, lm1)$`Pr(>F)`[2]
+  lsdTable <- as.data.frame(DescTools::PostHocTest(aov(lm1), method = "lsd")$pheno)
+  lsdTable$compare <- rownames(lsdTable)
+  lsdTable$pheno1 <- str_split(lsdTable$compare, "-", simplify = TRUE)[,1]
+  lsdTable$pheno2 <- str_split(lsdTable$compare, "-", simplify = TRUE)[,2]
+  MElmDF$primingVSnaive[i] <- min(lsdTable$pval[lsdTable$pheno2 == "Naive" & grepl("Priming", lsdTable$pheno1)])
+  MElmDF$infectionVSinjury[i] <- min(lsdTable$pval[lsdTable$pheno2 == "Injury_Control" & grepl("Infection", lsdTable$pheno1)])
+  
+}
+ggplot(mEigen2 %>% filter(ME == "MEsaddlebrown"), aes(x = pheno, y = value)) + geom_point()
+ggplot(mEigen2 %>% filter(ME == "MEroyalblue"), aes(x = pheno, y = value)) + geom_point()
+ggplot(mEigen2 %>% filter(ME == "MEgreen"), aes(x = pheno, y = value)) + geom_point()
+
+colData1b$pheno <- factor(colData1b$pheno, levels = c("Naive","Enterobacter_Priming", "Serratia_Priming",
+                                                      "Injury_Control", "Enterobacter_infection", "Serratia_Infection", "Ent_Prim_p_Ent_inf",
+                                                      "Ser_Prim_p_Ser_inf", "Ent_Prim_p_Ser_inf", "Ser_Prim_p_Ent_inf"))
+colData1b <- colData1b %>% arrange(pheno, rep)
+colData1b$ord <- 1:nrow(colData1b)
+greenTOMhClust <- hclust(as.dist(TOM[modDF$gene[modDF$module == "green"], modDF$gene[modDF$module == "green"]]),
+                         method = "average")
+greenExpression <- scale(rlog2b[match(colData1b$oldSampName, rownames(rlog2b)), 
+                                modDF$gene[modDF$module == "green"]])
+greenExpression <- greenExpression[grepl("Injury|Infection|infection", rownames(greenExpression)),]
+png(filename = "Plots/WGCNA_Module1.png", height = 6, width = 18, units = "in", res = 600)
+greenColors <- WGCNA::numbers2colors(greenExpression, signed = TRUE, commonLim = FALSE)
+WGCNA::plotDendroAndColors(dendro = greenTOMhClust, colors = t(greenColors),
+                           groupLabels = rownames(greenExpression),
+                           cex.dendroLabels = 0.25)
+dev.off()
 
 # Make comparison of ME's:
 comparisons <- data.frame(pheno1 = c("Naive", "Naive", "Enterobacter_Priming"), 
