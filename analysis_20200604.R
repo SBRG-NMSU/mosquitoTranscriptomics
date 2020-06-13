@@ -273,10 +273,10 @@ rlog1Entropyb <- rlog1Entropyb %>% left_join(data.frame(gene = names(colEntropie
 rm(rlog1Temp, rlog1Tempb, colEntropies, colEntropiesb)
 
 # Histograms
-hist(rlog1Entropy$entropy)
-hist(rlog1Entropy$infoGain)
-median(rlog1Entropy$entropy)
-median(rlog1Entropy$infoGain)
+hist(rlog1Entropyb$entropy)
+hist(rlog1Entropyb$infoGain)
+median(rlog1Entropyb$entropy)
+median(rlog1Entropyb$infoGain)
 
 ############ Multivariate visualization ############
 pca1 <- prcomp(scale(rlog1, scale = FALSE))
@@ -284,17 +284,17 @@ pca1Scores <- as.data.frame(pca1$x[,1:4])
 pca1Scores$oldSampName <- rownames(pca1Scores)
 pca1Scores <- colData1 %>% left_join(pca1Scores)
 
-png(filename = "Plots/PC1vsPC2.png", height = 4.5, width = 6.5, units = "in", res = 300)
+# png(filename = "Plots/PC1vsPC2.png", height = 4.5, width = 6.5, units = "in", res = 300)
 set.seed(3)
 ggplot(pca1Scores, aes(x = PC1, y = PC2, color = pheno, label = oldSampName)) + geom_point() +
   geom_text_repel(size = 2)
-dev.off()
+# dev.off()
 
-png(filename = "Plots/PC3vsPC4.png", height = 4.5, width = 6.5, units = "in", res = 300)
+# png(filename = "Plots/PC3vsPC4.png", height = 4.5, width = 6.5, units = "in", res = 300)
 set.seed(3)
 ggplot(pca1Scores, aes(x = PC3, y = PC4, color = pheno, label = oldSampName)) + geom_point() +
   geom_text_repel(size = 2)
-dev.off()
+# dev.off()
 
 PCA3D <- plotly::plot_ly(pca1Scores, x = ~PC1, y = ~PC3, z = ~PC4, color = ~pheno)
 PCA3D <- PCA3D %>% plotly::add_markers()
@@ -303,12 +303,13 @@ PCA3D <- PCA3D %>% plotly::layout(scene = list(xaxis = list(title = 'PC1'),
                                    zaxis = list(title = 'PC4')))
 PCA3D
 
-png(filename = "Plots/hclust.png", height = 6.5, width = 6.5, units = "in", res = 300)
+# png(filename = "Plots/hclust.png", height = 6.5, width = 6.5, units = "in", res = 300)
 plot(hclust(dist(rlog1), method = "ward.D2"))
-dev.off()
+# dev.off()
 
 ############ Sensitivity analysis ############
-pca2 <- prcomp(scale(rlog1[rownames(rlog1) != "Ent Prim + Ser inf 2",], scale = FALSE))
+pca2 <- prcomp(scale(rlog1b, scale = FALSE))
+summary(pca2)
 pca2Scores <- as.data.frame(pca2$x[,1:4])
 pca2Scores$oldSampName <- rownames(pca2Scores)
 pca2Scores <- colData1 %>% inner_join(pca2Scores)
@@ -326,14 +327,14 @@ ggplot(pca2Scores, aes(x = PC3, y = PC4, color = pheno, label = oldSampName)) + 
 dev.off()
 
 png(filename = "Plots/hclust_sens.png", height = 6.5, width = 6.5, units = "in", res = 300)
-plot(hclust(dist(rlog1[rownames(rlog1) != "Ent Prim + Ser inf 2",]), method = "ward.D2"))
+plot(hclust(dist(rlog1b), method = "ward.D2"))
 dev.off()
 
 rm(pca1, pca2, pca1Scores, pca2Scores, PCA3D, colEntropies, colEntropiesb)
 
 ############ WGCNA "fitting" ############
 # Entropy filters on both:
-rlog2b <- rlog1b[, (rlog1Entropyb$entropy > quantile(rlog1Entropyb$entropy)['50%'])] # 4,973
+# rlog2b <- rlog1b[, (rlog1Entropyb$entropy > quantile(rlog1Entropyb$entropy)['50%'])] # 4,973
 rlog2b <- rlog1b
 
 powers <- 1:20
@@ -357,13 +358,14 @@ par(oldPar)
 adjacency <- WGCNA::adjacency(rlog2b, type = "signed", power = softPower) #corOptions="use = 'p', method = 'spearman'"
 # Turn adjacency into topological overlap
 TOM <- WGCNA::TOMsimilarity(adjacency)
+# TOM2 <- WGCNA::TOMsimilarity(adjacency, TOMType = "signed") # 'twas the same
 rownames(TOM) <- colnames(TOM) <- rownames(adjacency)
 dissTOM <- 1 - TOM
 tree <- hclust(as.dist(dissTOM), method = "average")
 
 # Module identification using dynamic tree cut:
 dynamicMods <- dynamicTreeCut::cutreeDynamic(dendro = tree, distM = dissTOM, deepSplit = 2, pamRespectsDendro = TRUE,
-                           minClusterSize = 20, method = "hybrid")
+                           minClusterSize = 20, method = "hybrid", cutHeight = .9)
 dynamicColors <- WGCNA::labels2colors(dynamicMods)
 
 # Plot dendogram and module assignment:
@@ -381,11 +383,11 @@ dev.off()
 modDF <- data.frame(gene = rownames(TOM), module = dynamicColors)
 
 ############ Module eigengenes ############
-mEigen1 <- WGCNA::moduleEigengenes(rlog2b, dynamicColors, impute = FALSE, nPC = 1, align = "along average", excludeGrey = TRUE, 
-                 grey = if (is.numeric(colors)) 0 else "grey", softPower = 6, scale = TRUE,
-                 verbose = 5, indent = 1)
+mEigen1 <- WGCNA::moduleEigengenes(rlog2b, dynamicColors, impute = FALSE, nPC = 1, align = "along average", 
+                                   excludeGrey = TRUE, grey = if (is.numeric(colors)) 0 else "grey", 
+                                   softPower = 9, scale = TRUE, verbose = 5, indent = 1)
 
-save.image(file = "Data/running_20200606.RData")
+save.image(file = "Data/running_20200612.RData")
 
 # Make into long data.frame:
 mEigen2 <- mEigen1$eigengenes
