@@ -121,8 +121,6 @@ contrastDF2 <- do.call("rbind", contrastDF2)
 # Add FDR preserving q-values:
 contrastDF2$qvalue <- qvalue::qvalue(contrastDF2$pvalue)$qvalues
 
-save("contrastDF2", "df1b", file = paste0("Results/contrastDF2_", gsub("-", "", Sys.Date()), ".RData"))
-
 # If p-adjusted is NA make it 1:
 contrastDF2$padj[is.na(contrastDF2$padj)] <- 1.0
 
@@ -139,6 +137,8 @@ contrastDF2$Comparison <- factor(contrastDF2$Comparison, levels =
                                    c("Enterobacter vs. Naive", "Serratia vs. Naive", "Serratia vs. Enterobacter",
                                      "Ent Inf vs Inj Ctrl", "Ser Inf vs Inj Ctrl", "Ent Prim & Inf vs Ent Inf",
                                      "Ser Prim & Inf vs Ser Inf"))
+
+save("contrastDF2", "df1b", file = paste0("Results/contrastDF2_", gsub("-", "", Sys.Date()), ".RData"))
 
 # Add labels for volcano plot:
 contrastDF2$volLabel <- ifelse(contrastDF2$qvalue < 0.05 & abs(contrastDF2$log2FoldChange) > 2.5, 
@@ -391,11 +391,13 @@ save.image(file = "Data/running_20200612.RData")
 load(file = "Data/running_20200612.RData")
 
 ############ FGSEA analysis ############
+# Make a list of genes that are in each module
 MElist <- list()
 for(color in unique(modDF$module)){
   MElist[[color]] <- modDF$gene[modDF$module == color]
 }
 
+# GSEA analysis:
 comps <- unique(contrastDF2$Comparison)
 fgseaRes <- list()
 for(i in 1:length(comps)){
@@ -409,10 +411,18 @@ for(i in 1:length(comps)){
   print(i)
 }
 fgseaRes <- do.call("rbind", fgseaRes)
+fgseaRes <- fgseaRes %>% group_by(pathway) %>% mutate(maxLogP = max(-log10(padj), na.rm = TRUE))
 
+# Make one results dataset for export:
 fgseaResP <- fgseaRes %>% select(pathway, Comparison, pval) %>% spread(key = "Comparison", value = "pval")
 fgseaResNES <- fgseaRes %>% select(pathway, Comparison, NES) %>% spread(key = "Comparison", value = "NES")
 fgseaRes2 <- fgseaResP %>% full_join(fgseaResNES, by = "pathway", suffix = c(".pValue", ".NES"))
+
+# Plot:
+ggplot(fgseaRes %>% filter(maxLogP > 1), aes(x = Comparison, y = -log10(padj), fill = Comparison)) + 
+  geom_bar(color = "black", position = "dodge", stat = "identity", width = .7) +
+  facet_wrap(~pathway) + 
+  scale_fill_manual(values = wesanderson::wes_palette("Royal1", 7, type = "continuous"))
 
 ############ Module eigengenes ############
 # Make into long data.frame:
