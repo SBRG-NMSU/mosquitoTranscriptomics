@@ -123,6 +123,7 @@ contrastDF2$qvalue <- qvalue::qvalue(contrastDF2$pvalue)$qvalues
 
 # If p-adjusted is NA make it 1:
 contrastDF2$padj[is.na(contrastDF2$padj)] <- 1.0
+contrastDF2$qvalue[contrastDF2$padj == 1.0]
 
 # Volcano Plots:
 contrastDF2 <- contrastDF2 %>% mutate(Comparison = case_when(
@@ -185,7 +186,7 @@ ggplot(contrastDF2 %>% filter(Comparison %in% c("Ent Inf vs Inj Ctrl", "Ser Inf 
 rm(prevLabs)
 # dev.off()
 
-# Concordant-discordant analysis:
+# Wide contrast data.frame:
 contrastDF2wFC <- contrastDF2 %>% select(gene, Comparison, log2FoldChange) %>% 
   spread(key = Comparison, value = log2FoldChange)
 names(contrastDF2wFC)[names(contrastDF2wFC) != "gene"] <- 
@@ -194,11 +195,22 @@ contrastDF2wQ <- contrastDF2 %>% select(gene, Comparison, qvalue) %>% spread(key
 names(contrastDF2wQ)[names(contrastDF2wQ) != "gene"] <- 
   paste0("Q_", names(contrastDF2wQ)[names(contrastDF2wQ) != "gene"])
 contrastDF2w <- contrastDF2wFC %>% left_join(contrastDF2wQ)
+writexl::write_xlsx(contrastDF2w, path = paste0("Results/contrastDFw_", gsub("-", "", Sys.Date()), ".xlsx"))
 
-ggplot(contrastDF2w %>% filter(`Q_Ent Inf vs Inj Ctrl` < 0.05 | `Q_Ser Inf vs Inj Ctrl` < 0.05), 
-       aes(x = `FC_Ent Inf vs Inj Ctrl`, y = `FC_Ser Inf vs Inj Ctrl`)) + 
-  geom_point(color = "dodgerblue", shape = 1, show.legend = FALSE) + stat_smooth(method = "lm") +
-  xlim(-12, 12) + ylim(-7, 7)
+# Infection concordance:
+contrastDF2a <- contrastDF2w %>% filter(`Q_Ent Inf vs Inj Ctrl` < 0.05 | `Q_Ser Inf vs Inj Ctrl` < 0.05) # 3,961 genes
+contrastDF2a$lab <- contrastDF2a$gene
+contrastDF2a$lab[!(abs(contrastDF2a$`FC_Ent Inf vs Inj Ctrl`) > 2.5 | 
+                     abs(contrastDF2a$`FC_Ser Inf vs Inj Ctrl`) > 2.5)] <- ""
+
+png(file = "Plots/InfectionAgreement1.png", height = 5, width = 6, units = "in", res = 300)
+ggplot(contrastDF2a , aes(x = `FC_Ent Inf vs Inj Ctrl`, y = `FC_Ser Inf vs Inj Ctrl`, label = lab)) + 
+  geom_point(color = "dodgerblue", shape = 1, show.legend = FALSE) +
+  geom_text_repel(size = 2, segment.colour = "grey30", segment.alpha = .5) +
+  geom_vline(xintercept = 0, lty = 2, lwd = .25) + geom_hline(yintercept = 0, lty = 2, lwd = .25) +
+  labs(x = "Enterobacter Infection / Injury Control (Log2 FC)", y = "Serratia Infection / Injury Control (Log2 FC)") 
+dev.off()
+rm(contrastDF2a)
 
 # Priming concordant-discordant analysis:
 contrastDF2a <- contrastDF2w %>% filter(`Q_Enterobacter vs. Naive` < 0.05 | `Q_Serratia vs. Naive` < 0.05) # 1,162 genes
@@ -356,7 +368,7 @@ softPower <- 9
 par(oldPar)
 
 # Adjacency and distance matrices
-adjacency <- WGCNA::adjacency(rlog2b, type = "signed", power = softPower) #corOptions="use = 'p', method = 'spearman'"
+adjacency <- WGCNA::adjacency(rlog2b, type = "signed", power = softPower) 
 # Turn adjacency into topological overlap
 TOM <- WGCNA::TOMsimilarity(adjacency)
 # TOM2 <- WGCNA::TOMsimilarity(adjacency, TOMType = "signed") # 'twas the same
@@ -370,15 +382,15 @@ dynamicMods <- dynamicTreeCut::cutreeDynamic(dendro = tree, distM = dissTOM, dee
 dynamicColors <- WGCNA::labels2colors(dynamicMods)
 
 # Plot dendogram and module assignment:
-png(filename = "Plots/WGCNA_Dendro1.png",height = 6, width = 10, units = "in", res = 600)
+# png(filename = "Plots/WGCNA_Dendro1.png",height = 6, width = 10, units = "in", res = 600)
 WGCNA::plotDendroAndColors(tree, cbind(dynamicColors), "Module Assignment", dendroLabels = FALSE, hang = 0.0, 
                            addGuide = TRUE, guideHang = 0.0, main = "Gene Modules")
-dev.off()
+# dev.off()
 
 # Plot distnace matrix heatmap w/ module assignment
-png(filename = "Plots/WGCNA_Heatmap1.png", height = 6, width = 6, units = "in", res = 600)
+# png(filename = "Plots/WGCNA_Heatmap1.png", height = 6, width = 6, units = "in", res = 600)
 WGCNA::TOMplot(dissTOM, tree, dynamicColors, main = "Module heatmap")
-dev.off()
+# dev.off()
 
 # Module-gene mapping:
 modDF <- data.frame(gene = rownames(TOM), module = dynamicColors)
@@ -410,19 +422,32 @@ for(i in 1:length(comps)){
   fgseaRes[[i]] <- fgsea1
   print(i)
 }
+fgseaRes0 <- fgseaRes
 fgseaRes <- do.call("rbind", fgseaRes)
 fgseaRes <- fgseaRes %>% group_by(pathway) %>% mutate(maxLogP = max(-log10(padj), na.rm = TRUE))
+fgseaRes <- fgseaRes %>% filter(!pathway == "grey")
 
 # Make one results dataset for export:
 fgseaResP <- fgseaRes %>% select(pathway, Comparison, pval) %>% spread(key = "Comparison", value = "pval")
 fgseaResNES <- fgseaRes %>% select(pathway, Comparison, NES) %>% spread(key = "Comparison", value = "NES")
 fgseaRes2 <- fgseaResP %>% full_join(fgseaResNES, by = "pathway", suffix = c(".pValue", ".NES"))
+writexl::write_xlsx(fgseaRes2, path = paste0("Results/WGCNA_GSEA_", gsub("-", "", Sys.Date()), ".xlsx"))
 
 # Plot:
-ggplot(fgseaRes %>% filter(maxLogP > 1), aes(x = Comparison, y = -log10(padj), fill = Comparison)) + 
+png(filename = "Plots/WGCNA_GSEARes.png",height = 6, width = 10, units = "in", res = 600)
+ggplot(fgseaRes %>% filter(maxLogP > 1.30103), aes(x = Comparison, y = -log10(padj), fill = Comparison)) + 
   geom_bar(color = "black", position = "dodge", stat = "identity", width = .7) +
-  facet_wrap(~pathway) + 
+  facet_wrap(~pathway, ncol = 7) + theme(axis.text.x = element_blank()) +
   scale_fill_manual(values = wesanderson::wes_palette("Royal1", 7, type = "continuous"))
+dev.off()
+
+comp2 <- contrastDF2[contrastDF2$Comparison == "Ser Inf vs Inj Ctrl", c("gene", "stat")]
+comp2$stat <- abs(comp2$stat)
+comp2 <- comp2 %>% deframe()
+
+png(filename = "Plots/WGCNA_GSEA_GreenEnrich.png",height = 5, width = 7, units = "in", res = 600)
+fgsea::plotEnrichment(MElist[["green"]], comp2) + labs(title = "Serratia Infection vs Injury Control: Green Module")
+dev.off()
 
 ############ Module eigengenes ############
 # Make into long data.frame:
@@ -463,6 +488,19 @@ colData1b$pheno <- factor(colData1b$pheno, levels = c("Naive","Enterobacter_Prim
                                                       "Ser_Prim_p_Ser_inf", "Ent_Prim_p_Ser_inf", "Ser_Prim_p_Ent_inf"))
 colData1b <- colData1b %>% arrange(pheno, rep)
 colData1b$ord <- 1:nrow(colData1b)
+
+# orange module:
+orangeTOMhClust <- hclust(as.dist(TOM[modDF$gene[modDF$module == "orange"], modDF$gene[modDF$module == "orange"]]),
+                         method = "average")
+orangeExpression <- scale(rlog2b[match(colData1b$oldSampName, rownames(rlog2b)), 
+                                modDF$gene[modDF$module == "orange"]])
+orangeExpression <- orangeExpression[grepl("Injury|Infection|infection", rownames(orangeExpression)),]
+png(filename = "Plots/WGCNA_Module_orange.png", height = 6, width = 12, units = "in", res = 600)
+orangeColors <- WGCNA::numbers2colors(orangeExpression, signed = TRUE, commonLim = FALSE)
+WGCNA::plotDendroAndColors(dendro = orangeTOMhClust, colors = t(orangeColors),
+                           groupLabels = rownames(orangeExpression),
+                           cex.dendroLabels = 0.75, main = "")
+dev.off()
 
 # Green module:
 greenTOMhClust <- hclust(as.dist(TOM[modDF$gene[modDF$module == "green"], modDF$gene[modDF$module == "green"]]),
