@@ -399,6 +399,7 @@ mEigen1 <- WGCNA::moduleEigengenes(rlog2b, dynamicColors, impute = FALSE, nPC = 
                                    excludeGrey = TRUE, grey = if (is.numeric(colors)) 0 else "grey", 
                                    softPower = 9, scale = TRUE, verbose = 5, indent = 1)
 
+writexl::write_xlsx(modDF, path = paste0("Results/WGCNA_Modules_", gsub("-", "", Sys.Date()), ".xlsx"))
 save.image(file = "Data/running_20200612.RData")
 load(file = "Data/running_20200612.RData")
 
