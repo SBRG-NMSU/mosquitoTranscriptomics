@@ -2,8 +2,8 @@
 options(stringsAsFactors = FALSE, scipen = 900)
 oldPar <- par()
 os <- Sys.info()["sysname"]
-baseDir <- ifelse(os == "Windows", "C:/Users/ptrainor/gdrive/Mosquitos/", 
-                  "~/gdrive/Mosquitos/")
+baseDir <- ifelse(os == "Windows", "C:/Users/ptrainor/gdrive/Mosquitos/Priming_Infection/", 
+                  "~/gdrive/Mosquitos/Priming_Infection/")
 setwd(baseDir)
 
 library(tidyverse)
@@ -47,6 +47,44 @@ filter1 <- apply(df1, 1, function(x) sum(x == 0) == 30)
 filter1b <- apply(df1b, 1, function(x) sum(x == 0) == 29)
 df1 <- df1[!filter1, ] # 12,104
 df1b <- df1b[!filter1b, ] # 12,092
+
+############ Import annotation data ############
+# Imports:
+biomartDF <- read.csv("./biomart_agambiae_data.csv")
+ensemblIDDF <- read.csv("./contrastDF2_ensembl_ids2.csv") %>% select(gene, ensembl_id) %>% unique()
+# keggDF <- read.csv("./contrast_data_ensembl_kegg.csv") %>% select(gene, ensembl_id, kegg_id) %>% unique()
+load("kegg_pathway_data.Rdata")
+
+# Join GO data to ensemble:
+ensemblIDDF$GO_terms <- ""
+for(i in 1:nrow(ensemblIDDF)){
+  temp1 <- biomartDF[biomartDF$ensembl_gene_id == ensemblIDDF$ensembl_id[i],]
+  temp2 <- temp1 %>% select(go_id, name_1006) %>% unique()
+  ensemblIDDF$GO_terms[i] <- paste(paste(temp2$go_id, temp2$name_1006, sep = ":"), collapse = "; ")
+  print(i)
+}
+ensemblIDDF$GO_terms[ensemblIDDF$GO_terms == ":"] <- ""
+
+# Process KEGG data:
+pathway_list2 <- list()
+for(i in 1:length(pathway_list)){
+  pathway_list2[[i]] <- data.frame(gene = pathway_list[[i]], pathway = names(pathway_list)[i])
+}
+pathway_list2 <- do.call("rbind", pathway_list2)
+
+# Join KEGG data:
+ensemblIDDF$KEGGpaths <- ""
+for(i in 1:nrow(ensemblIDDF)){
+  temp1 <- pathway_list2[pathway_list2$gene == ensemblIDDF$ensembl_id[i],]
+  temp1$pathway <- gsub("; ", ": ", temp1$pathway)
+  ensemblIDDF$KEGGpaths[i] <- paste(temp1$pathway, collapse = "; ")
+  print(i)
+}
+
+table(ensemblIDDF$KEGGpaths != "")
+
+# LOH
+ensemblIDDF$ensembl_id[ensemblIDDF$KEGGpaths == ""][ensemblIDDF$ensembl_id[ensemblIDDF$KEGGpaths == ""] %in% pathway_list2$gene]
 
 ############ Outlier dis-agreement ############
 # Data.frame for pairwise plots:
