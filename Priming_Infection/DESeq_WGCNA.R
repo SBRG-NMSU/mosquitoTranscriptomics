@@ -58,10 +58,12 @@ load("kegg_pathway_data.Rdata")
 # Join GO data to ensemble:
 ensemblIDDF$GO_terms <- ""
 for(i in 1:nrow(ensemblIDDF)){
-  temp1 <- biomartDF[biomartDF$ensembl_gene_id == ensemblIDDF$ensembl_id[i],]
-  temp2 <- temp1 %>% select(go_id, name_1006) %>% unique()
-  ensemblIDDF$GO_terms[i] <- paste(paste(temp2$go_id, temp2$name_1006, sep = ":"), collapse = "; ")
-  print(i)
+  if(!is.na(ensemblIDDF$ensembl_id[i])){
+    temp1 <- biomartDF[biomartDF$ensembl_gene_id == ensemblIDDF$ensembl_id[i],]
+    temp2 <- temp1 %>% select(go_id, name_1006) %>% unique()
+    ensemblIDDF$GO_terms[i] <- paste(paste(temp2$go_id, temp2$name_1006, sep = ":"), collapse = "; ")
+    print(i)
+  }
 }
 ensemblIDDF$GO_terms[ensemblIDDF$GO_terms == ":"] <- ""
 
@@ -73,18 +75,40 @@ for(i in 1:length(pathway_list)){
 pathway_list2 <- do.call("rbind", pathway_list2)
 
 # Join KEGG data:
-ensemblIDDF$KEGGpaths <- ""
+ensemblIDDF$KEGGpaths1 <- ensemblIDDF$KEGGpaths2 <- ensemblIDDF$KEGGpaths <- ""
 for(i in 1:nrow(ensemblIDDF)){
-  temp1 <- pathway_list2[pathway_list2$gene == ensemblIDDF$ensembl_id[i],]
-  temp1$pathway <- gsub("; ", ": ", temp1$pathway)
-  ensemblIDDF$KEGGpaths[i] <- paste(temp1$pathway, collapse = "; ")
+  # Match to ensembl
+  if(!is.na(ensemblIDDF$ensembl_id[i])){
+    temp1 <- pathway_list2[pathway_list2$gene == ensemblIDDF$ensembl_id[i],]
+    temp1$pathway <- gsub("; ", ": ", temp1$pathway)
+    ensemblIDDF$KEGGpaths1[i] <- paste(temp1$pathway, collapse = "; ")
+  }
+
+  # Match to gene name: 
+  if(!is.na(ensemblIDDF$gene[i])){
+    temp2 <- pathway_list2[pathway_list2$gene == ensemblIDDF$gene[i],]
+    temp2$pathway <- gsub("; ", ": ", temp2$pathway)
+    ensemblIDDF$KEGGpaths2[i] <- paste(temp2$pathway, collapse = "; ")
+  }
+  
+  # Merge and check:
+  if(ensemblIDDF$KEGGpaths1[i] == ensemblIDDF$KEGGpaths2[i]){
+    ensemblIDDF$KEGGpaths[i] <- ensemblIDDF$KEGGpaths1[i]
+  }else{
+    if(ensemblIDDF$KEGGpaths1[i] == ""){
+      ensemblIDDF$KEGGpaths[i] <- ensemblIDDF$KEGGpaths2[i]
+    }else{
+      ensemblIDDF$KEGGpaths[i] <- ensemblIDDF$KEGGpaths1[i]
+    }
+  }
+    
   print(i)
 }
-
+table(ensemblIDDF$KEGGpaths1 != "", ensemblIDDF$KEGGpaths2 != "")
 table(ensemblIDDF$KEGGpaths != "")
 
-# LOH
-ensemblIDDF$ensembl_id[ensemblIDDF$KEGGpaths == ""][ensemblIDDF$ensembl_id[ensemblIDDF$KEGGpaths == ""] %in% pathway_list2$gene]
+# Uniqueness:
+keggGOAnno <- ensemblIDDF %>% select(gene, KEGGpaths, GO_terms) %>% unique()
 
 ############ Outlier dis-agreement ############
 # Data.frame for pairwise plots:
@@ -233,6 +257,11 @@ contrastDF2wQ <- contrastDF2 %>% select(gene, Comparison, qvalue) %>% spread(key
 names(contrastDF2wQ)[names(contrastDF2wQ) != "gene"] <- 
   paste0("Q_", names(contrastDF2wQ)[names(contrastDF2wQ) != "gene"])
 contrastDF2w <- contrastDF2wFC %>% left_join(contrastDF2wQ)
+
+# Join with KEGG and GO annotation data:
+contrastDF2w <- contrastDF2w %>% left_join(keggGOAnno)
+
+# Export:
 writexl::write_xlsx(contrastDF2w, path = paste0("Results/contrastDFw_", gsub("-", "", Sys.Date()), ".xlsx"))
 
 # Infection concordance:
@@ -251,7 +280,7 @@ dev.off()
 rm(contrastDF2a)
 
 # Priming concordant-discordant analysis:
-contrastDF2a <- contrastDF2w %>% filter(`Q_Enterobacter vs. Naive` < 0.05 | `Q_Serratia vs. Naive` < 0.05) # 1,162 genes
+contrastDF2a <- contrastDF2w %>% filter(`Q_Enterobacter vs. Naive` < 0.05 | `Q_Serratia vs. Naive` < 0.05) # 1,562 genes
 # Determine if concordant:
 constrastDF2b <- contrastDF2a %>% mutate(catE = 
                          case_when(`Q_Enterobacter vs. Naive` < 0.05 & `FC_Enterobacter vs. Naive` > 0 ~ "up05",
@@ -264,6 +293,7 @@ constrastDF2b <- contrastDF2a %>% mutate(catE =
                                      `Q_Serratia vs. Naive` >= 0.05 & `FC_Serratia vs. Naive`> 0 ~ "upNS",
                                      `Q_Serratia vs. Naive` >= 0.05 & `FC_Serratia vs. Naive` < 0 ~ "downNS"))
 xtabs(~catE + catS, data = constrastDF2b)
+writexl::write_xlsx(constrastDF2b, path = paste0("Results/contrastDF2b_Priming_", gsub("-", "", Sys.Date()), ".xlsx"))
 
 # Label some:
 contrastDF2a$lab <- contrastDF2a$gene
