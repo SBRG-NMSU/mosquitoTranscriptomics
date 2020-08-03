@@ -2,8 +2,8 @@
 options(stringsAsFactors = FALSE, scipen = 900)
 oldPar <- par()
 os <- Sys.info()["sysname"]
-baseDir <- ifelse(os == "Windows", "C:/Users/ptrainor/gdrive/Mosquitos/Priming_Infection/", 
-                  "~/gdrive/Mosquitos/Priming_Infection/")
+baseDir <- ifelse(os == "Windows", "C:/Users/ptrainor/gdrive/Mosquitos/AhR/", 
+                  "~/gdrive/Mosquitos/AhR/")
 setwd(baseDir)
 
 library(tidyverse)
@@ -15,7 +15,7 @@ theme_update(plot.title = element_text(hjust = 0.5))
 
 ############ Import and process raw counts ############
 # Count data:
-df1 <- read.csv("Data/Priming_RNAseq_RawCounts_5-31-20.csv", header = TRUE, check.names = FALSE)
+df1 <- read.csv("Data/AhR_RNAseq_RawCounts_20200802.csv", header = TRUE, check.names = FALSE)
 names(df1) <- gsub(" - total_read_count", "", names(df1))
 names(table(df1$Name))[table(df1$Name) > 1]
 rmExtra1 <- which(df1$Name == "tRNA-Leu")[2]
@@ -25,9 +25,6 @@ df1$Name <- gsub("AgaP_", "", df1$Name)
 rownames(df1) <- df1$Name
 df1$Name <- NULL
 
-# Data with severe outlier removed:
-df1b <- df1[, !(names(df1) ==  "Ent Prim + Ser inf 2")]
-
 # Column (phenotype) data:
 colData1 <- data.frame(oldSampName = names(df1))
 colData1$sampName <- gsub(" ", "_", gsub(" \\+ ", "_p_", colData1$oldSampName))
@@ -35,25 +32,19 @@ colData1$pheno <- substr(colData1$sampName, start = 1, stop = nchar(colData1$sam
 colData1$rep <- substr(colData1$sampName, start = nchar(colData1$sampName), stop = nchar(colData1$sampName))
 colData1$pheno <- as.factor(colData1$pheno)
 
-# Phenotype data w/o outlier:
-colData1b <- colData1 %>% filter(oldSampName != "Ent Prim + Ser inf 2")
-
 # Round fractional counts:
 df1 <- round(df1) # 12,723 transcripts
-df1b <- round(df1b)
 
 # Filter out transcripts w/ 0 counts:
 filter1 <- apply(df1, 1, function(x) sum(x == 0) == 30)
-filter1b <- apply(df1b, 1, function(x) sum(x == 0) == 29)
-df1 <- df1[!filter1, ] # 12,104
-df1b <- df1b[!filter1b, ] # 12,092
+df1 <- df1[!filter1, ] # 12,723
 
 ############ Import annotation data ############
 # Imports:
-biomartDF <- read.csv("./biomart_agambiae_data.csv")
-ensemblIDDF <- read.csv("./contrastDF2_ensembl_ids2.csv") %>% select(gene, ensembl_id) %>% unique()
+biomartDF <- read.csv("../Priming_Infection/biomart_agambiae_data.csv")
+ensemblIDDF <- read.csv("../Priming_Infection/contrastDF2_ensembl_ids2.csv") %>% select(gene, ensembl_id) %>% unique()
 # keggDF <- read.csv("./contrast_data_ensembl_kegg.csv") %>% select(gene, ensembl_id, kegg_id) %>% unique()
-load("kegg_pathway_data.Rdata")
+load("../Priming_Infection/kegg_pathway_data.Rdata")
 
 # Join GO data to ensemble:
 ensemblIDDF$GO_terms <- ""
@@ -110,54 +101,20 @@ table(ensemblIDDF$KEGGpaths != "")
 # Uniqueness:
 keggGOAnno <- ensemblIDDF %>% select(gene, KEGGpaths, GO_terms) %>% unique()
 
-############ Outlier dis-agreement ############
-# Data.frame for pairwise plots:
-df1Disagree <- df1 %>% select("Ent Prim + Ser inf 1", "Ent Prim + Ser inf 2", "Ent Prim + Ser inf 3")
-
-# Pairwise correlations:
-cor(log10(df1Disagree$`Ent Prim + Ser inf 1` + 1), log10(df1Disagree$`Ent Prim + Ser inf 2` + 1))
-cor(log10(df1Disagree$`Ent Prim + Ser inf 2` + 1), log10(df1Disagree$`Ent Prim + Ser inf 3` + 1))
-cor(log10(df1Disagree$`Ent Prim + Ser inf 1` + 1), log10(df1Disagree$`Ent Prim + Ser inf 3` + 1))
-
-# Pairwise plots
-p1 <- ggplot(df1Disagree, aes(x = log10(`Ent Prim + Ser inf 2` + 1), y = log10(`Ent Prim + Ser inf 1` + 1))) + 
-  geom_point(shape = 1, size = .75) + geom_smooth(method = "lm", se = FALSE) + xlim(0, 8) + ylim(0, 8) +
-  annotate("label", x = 2, y = 6, label = expression(italic(r) == 0.780), size = 8) +
-  ggtitle("1 versus 2")
-p2 <- ggplot(df1Disagree, aes(x = log10(`Ent Prim + Ser inf 2`+ 1), y = log10(`Ent Prim + Ser inf 3`+ 1))) + 
-  geom_point(shape = 1, size = .75) + geom_smooth(method = "lm", se = FALSE) + xlim(0, 8) + ylim(0, 8) +
-  annotate("label", x = 2, y = 6, label = expression(italic(r) == 0.821), size = 8)+
-  ggtitle("3 versus 2")
-p3 <- ggplot(df1Disagree, aes(x = log10(`Ent Prim + Ser inf 1`+ 1), y = log10(`Ent Prim + Ser inf 3`+ 1))) + 
-  geom_point(shape = 1, size = .75) + geom_smooth(method = "lm", se = FALSE) + xlim(0, 8) + ylim(0, 8) +
-  annotate("label", x = 2, y = 6, label = expression(italic(r) == 0.978), size = 8)+
-  ggtitle("3 versus 1")
-
-# png(file = "Plots/Disagreement1.png", height = 4, width = 12, units = "in", res = 300)
-gridExtra::grid.arrange(p3, p1, p2, ncol = 3)
-# dev.off()
-
-rm(df1Disagree, p1, p2, p3)
-
 ############ Univariate analysis ############
 # Set up DESeq2 analysis:
 des1 <- DESeqDataSetFromMatrix(countData = df1, colData = colData1, design = ~ pheno)
-des1b <- DESeqDataSetFromMatrix(countData = df1b, colData = colData1b, design = ~ pheno)
 des1 <- DESeq(des1)
-des1b <- DESeq(des1b)
 
 # LRT:
-des0 <- DESeq(des1b, test="LRT", reduced = ~ 1)
+des0 <- DESeq(des1, test="LRT", reduced = ~ 1)
 res0 <- as.data.frame(results(des0, cooksCutoff = Inf))
 
 # Pre-filter low normalized counts:
 lowNCounts <- rownames(res0)[res0$baseMean < 5]
 des1 <- DESeqDataSetFromMatrix(countData = df1[!rownames(df1) %in% lowNCounts,], 
-                               colData = colData1, design = ~ pheno) # 10726
-des1b <- DESeqDataSetFromMatrix(countData = df1b[!rownames(df1b) %in% lowNCounts,], 
-                                colData = colData1b, design = ~ pheno) # 10714
+                               colData = colData1, design = ~ pheno) # 10,374
 des1 <- DESeq(des1)
-des1b <- DESeq(des1b)
 
 # Make data.frame of comparisons between priming and Naive:
 contrastDF1 <- data.frame(pheno1 = c("Enterobacter_Priming", "Serratia_Priming", "Serratia_Priming",
