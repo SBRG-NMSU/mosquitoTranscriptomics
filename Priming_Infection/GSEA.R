@@ -116,6 +116,8 @@ for (gene in contrastDF2$gene[grep("^AGAP", contrastDF2$gene)]) {
 
 #write.csv(contrastDF2, "contrastDF2_ensembl_ids2.csv", row.names=F)
 contrast <- read.csv("contrastDF2_ensembl_ids2.csv", stringsAsFactors=F)
+# Adding an id to use for KEGG GSEA (made up of genes and ensembl ids)
+contrast$kegg_id <- ifelse(contrast$gene %in% kegg_pathways2$gene, contrast$gene, contrast$ensembl_id)
 
 # Getting gene names from contrast file that didn't map to an ensembl id
 test4 <- contrastDF2[contrastDF2$ensembl_id == "NA",]
@@ -153,13 +155,13 @@ GO_biological_process <- unique(paste(GO_biological_process$go_id, GO_biological
 #gene_count <- test %>% group_by(namespace_1003) %>% count(go_id)
 
 #### Seperate contrast file into the different comparisons ####
-enter_vs_naive_contrast <- filter(contrastDF2, Comparison == "Enterobacter vs. Naive")
-serr_vs_naive_contrast <- filter(contrastDF2, Comparison == "Serratia vs. Naive")
-serr_vs_enter_contrast <- filter(contrastDF2, Comparison == "Serratia vs. Enterobacter")
-enter_inf_vs_inj_ctrl_contrast <- filter(contrastDF2, Comparison == "Ent Inf vs Inj Ctrl")
-serr_inf_vs_inj_ctrl_contrast <- filter(contrastDF2, Comparison == "Ser Inf vs Inj Ctrl")
-enter_prim_inf_vs_enter_inf_contrast <- filter(contrastDF2, Comparison == "Ent Prim & Inf vs Ent Inf")
-serr_prim_inf_vs_serr_inf_contrast <- filter(contrastDF2, Comparison == "Ser Prim & Inf vs Ser Inf")
+enter_vs_naive_contrast <- filter(contrast, Comparison == "Enterobacter vs. Naive")
+serr_vs_naive_contrast <- filter(contrast, Comparison == "Serratia vs. Naive")
+serr_vs_enter_contrast <- filter(contrast, Comparison == "Serratia vs. Enterobacter")
+enter_inf_vs_inj_ctrl_contrast <- filter(contrast, Comparison == "Ent Inf vs Inj Ctrl")
+serr_inf_vs_inj_ctrl_contrast <- filter(contrast, Comparison == "Ser Inf vs Inj Ctrl")
+enter_prim_inf_vs_enter_inf_contrast <- filter(contrast, Comparison == "Ent Prim & Inf vs Ent Inf")
+serr_prim_inf_vs_serr_inf_contrast <- filter(contrast, Comparison == "Ser Prim & Inf vs Ser Inf")
 
 enter_vs_naive_contrast$stat <- abs(enter_vs_naive_contrast$stat)
 serr_vs_naive_contrast$stat <- abs(serr_vs_naive_contrast$stat)
@@ -170,7 +172,7 @@ enter_prim_inf_vs_enter_inf_contrast$stat <- abs(enter_prim_inf_vs_enter_inf_con
 serr_prim_inf_vs_serr_inf_contrast$stat <- abs(serr_prim_inf_vs_serr_inf_contrast$stat)
 
 
-# Create a preranked list of genes
+# Create a preranked list of ensembl_ids
 ranked_gene_list1 <- enter_vs_naive_contrast %>% 
   dplyr::select(ensembl_id, stat) %>% 
   filter(ensembl_id != "NA") %>% 
@@ -445,10 +447,12 @@ test55 <- merge(contrast, kegg_ids2, by.x="ensembl_id", by.y="gene")
 
 length(unique(test55$kegg_id))
 sum(unique(filter(test55, kegg_id != "")$kegg_id) %in% unique(contrastDF2$ensembl_id))
+sum(unique(filter(test55, kegg_id != "")$ensembl_id) %in% unique(contrast$ensembl_id))
 
 kegg_pathways <- keggLink("T01036", "pathway")
 kegg_pathways2 <- data.frame("kegg_pathway"=names(kegg_pathways), "gene"=kegg_pathways)
 kegg_pathways2$gene <- gsub("aga:|AgaP_", "", kegg_pathways2$gene)
+kegg_pathways3 <- merge(dplyr::select(contrast, gene, ensembl_id), kegg_pathways2, by.x="gene", by.y="gene", all=T, no.dups=T)
 
 kegg_pathway_names <- keggList("pathway", "aga")
 kegg_pathway_names2 <- data.frame("kegg_pathway_id"=names(kegg_pathway_names), "pathway_name"=kegg_pathway_names)
@@ -460,19 +464,91 @@ for (id in unique(kegg_pathways2$kegg_pathway)) {
   print(id) 
   id2 <- paste(id, kegg_pathway_names2$pathway_name[kegg_pathway_names2$kegg_pathway_id == id], sep="; ")
   df <- filter(kegg_pathways2, kegg_pathway == id)
+  df2 <- merge(df, dplyr::select(filter(contrast, Comparison=="Enterobacter vs. Naive"), gene, ensembl_id))
   pathway_list[[id2]] <- df$gene
 }
 
+#save(pathway_list, file = "kegg_pathway_data.Rdata")
 
+# Create a preranked list of kegg_ids
+ranked_gene_list8 <- enter_vs_naive_contrast %>% 
+  dplyr::select(kegg_id, stat) %>% 
+  filter(kegg_id != "NA") %>% 
+  distinct() %>% 
+  group_by(kegg_id) %>% 
+  summarize(stat=mean(stat)) %>%
+  arrange(desc(stat))
+
+ranked_gene_list8 <- deframe(ranked_gene_list8)
+
+ranked_gene_list9 <- serr_vs_naive_contrast %>% 
+  dplyr::select(kegg_id, stat) %>% 
+  filter(kegg_id != "NA") %>% 
+  distinct() %>% 
+  group_by(kegg_id) %>% 
+  summarize(stat=mean(stat)) %>%
+  arrange(desc(stat))
+
+ranked_gene_list9 <- deframe(ranked_gene_list9)
+
+ranked_gene_list10 <- serr_vs_enter_contrast %>% 
+  dplyr::select(kegg_id, stat) %>% 
+  filter(kegg_id != "NA") %>% 
+  distinct() %>% 
+  group_by(kegg_id) %>% 
+  summarize(stat=mean(stat)) %>%
+  arrange(desc(stat))
+
+ranked_gene_list10 <- deframe(ranked_gene_list10)
+
+ranked_gene_list11 <- enter_inf_vs_inj_ctrl_contrast %>% 
+  dplyr::select(kegg_id, stat) %>% 
+  filter(kegg_id != "NA") %>% 
+  distinct() %>% 
+  group_by(kegg_id) %>% 
+  summarize(stat=mean(stat)) %>%
+  arrange(desc(stat))
+
+ranked_gene_list11 <- deframe(ranked_gene_list11)
+
+ranked_gene_list12 <- serr_inf_vs_inj_ctrl_contrast %>% 
+  dplyr::select(kegg_id, stat) %>% 
+  filter(kegg_id != "NA") %>% 
+  distinct() %>% 
+  group_by(kegg_id) %>% 
+  summarize(stat=mean(stat)) %>%
+  arrange(desc(stat))
+
+ranked_gene_list12 <- deframe(ranked_gene_list12)
+
+ranked_gene_list13 <- enter_prim_inf_vs_enter_inf_contrast %>% 
+  dplyr::select(kegg_id, stat) %>% 
+  filter(kegg_id != "NA") %>% 
+  distinct() %>% 
+  group_by(kegg_id) %>% 
+  summarize(stat=mean(stat)) %>%
+  arrange(desc(stat))
+
+ranked_gene_list13 <- deframe(ranked_gene_list13)
+
+ranked_gene_list14 <- serr_prim_inf_vs_serr_inf_contrast %>% 
+  dplyr::select(kegg_id, stat) %>% 
+  filter(kegg_id != "NA") %>% 
+  distinct() %>% 
+  group_by(kegg_id) %>% 
+  summarize(stat=mean(stat)) %>%
+  arrange(desc(stat))
+
+ranked_gene_list14 <- deframe(ranked_gene_list14)
 
 ###### GSEA #######
-fgseaRes_enter_vs_naive2 <- fgsea(pathways=pathway_list, stats=ranked_gene_list1)
-fgseaRes_serr_vs_naive2 <- fgsea(pathways=pathway_list, stats=ranked_gene_list2)
-fgseaRes_serr_vs_enter2 <- fgsea(pathways=pathway_list, stats=ranked_gene_list3)
-fgseaRes_enter_inf_vs_inj_ctrl2 <- fgsea(pathways=pathway_list, stats=ranked_gene_list4)
-fgseaRes_serr_inf_vs_inj_ctrl2 <- fgsea(pathways=pathway_list, stats=ranked_gene_list5)
-fgseaRes_enter_prim_inf_vs_enter_inf2 <- fgsea(pathways=pathway_list, stats=ranked_gene_list6)
-fgseaRes_serr_prim_inf_vs_serr_inf2 <- fgsea(pathways=pathway_list, stats=ranked_gene_list7)
+fgseaRes_enter_vs_naive2 <- fgsea(pathways=pathway_list, stats=ranked_gene_list8)
+fgseaRes_serr_vs_naive2 <- fgsea(pathways=pathway_list, stats=ranked_gene_list9)
+fgseaRes_serr_vs_enter2 <- fgsea(pathways=pathway_list, stats=ranked_gene_list10)
+fgseaRes_enter_inf_vs_inj_ctrl2 <- fgsea(pathways=pathway_list, stats=ranked_gene_list11)
+fgseaRes_serr_inf_vs_inj_ctrl2 <- fgsea(pathways=pathway_list, stats=ranked_gene_list12)
+fgseaRes_enter_prim_inf_vs_enter_inf2 <- fgsea(pathways=pathway_list, stats=ranked_gene_list13)
+fgseaRes_serr_prim_inf_vs_serr_inf2 <- fgsea(pathways=pathway_list, stats=ranked_gene_list14)
 
 #write.csv(fgseaRes_enter_vs_naive2[,1:7], "fgseaRes_enter_vs_naive_kegg.csv", row.names=F)
 #write.csv(fgseaRes_serr_vs_naive2[,1:7], "fgseaRes_serr_vs_naive_kegg.csv", row.names=F)
@@ -580,8 +656,6 @@ library(purrr)
 par(mfrow=c(8, 2), lheight = 2, mar=rep(1, 4), adj = 0)
 
 walk(names(nord_palettes), nord_show_palette)
-
-
 
 
 
