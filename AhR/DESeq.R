@@ -25,6 +25,9 @@ df1$Name <- gsub("AgaP_", "", df1$Name)
 rownames(df1) <- df1$Name
 df1$Name <- NULL
 
+# Data with severe outlier removed:
+df1b <- df1[, !(names(df1) ==  "dsAhR + Serratia Infection 2")]
+
 # Column (phenotype) data:
 colData1 <- data.frame(oldSampName = names(df1))
 colData1$sampName <- gsub(" ", "_", gsub(" \\+ ", "_p_", colData1$oldSampName))
@@ -32,12 +35,18 @@ colData1$pheno <- substr(colData1$sampName, start = 1, stop = nchar(colData1$sam
 colData1$rep <- substr(colData1$sampName, start = nchar(colData1$sampName), stop = nchar(colData1$sampName))
 colData1$pheno <- as.factor(colData1$pheno)
 
+# Phenotype data w/o outlier:
+colData1b <- colData1 %>% filter(oldSampName != "dsAhR + Serratia Infection 2")
+
 # Round fractional counts:
 df1 <- round(df1) # 12,723 transcripts
+df1b <- round(df1b) 
 
 # Filter out transcripts w/ 0 counts:
-filter1 <- apply(df1, 1, function(x) sum(x == 0) == 30)
-df1 <- df1[!filter1, ] # 12,723
+filter1 <- apply(df1, 1, function(x) sum(x == 0) == 18)
+filter1b <- apply(df1b, 1, function(x) sum(x == 0) == 17) 
+df1 <- df1[!filter1, ] # 11,721
+df1b <- df1b[!filter1b, ] # 11,719
 
 ############ Import annotation data ############
 # Imports:
@@ -105,24 +114,35 @@ keggGOAnno <- ensemblIDDF %>% select(gene, KEGGpaths, GO_terms) %>% unique()
 # Set up DESeq2 analysis:
 des1 <- DESeqDataSetFromMatrix(countData = df1, colData = colData1, design = ~ pheno)
 des1 <- DESeq(des1)
+des1b <- DESeqDataSetFromMatrix(countData = df1b, colData = colData1b, design = ~ pheno)
+des1b <- DESeq(des1b) 
 
 # LRT:
-des0 <- DESeq(des1, test="LRT", reduced = ~ 1)
+des0 <- DESeq(des1b, test="LRT", reduced = ~ 1)
 res0 <- as.data.frame(results(des0, cooksCutoff = Inf))
 
 # Pre-filter low normalized counts:
 lowNCounts <- rownames(res0)[res0$baseMean < 5]
 des1 <- DESeqDataSetFromMatrix(countData = df1[!rownames(df1) %in% lowNCounts,], 
-                               colData = colData1, design = ~ pheno) # 10,374
+                               colData = colData1, design = ~ pheno) # 10,397
+des1b <- DESeqDataSetFromMatrix(countData = df1b[!rownames(df1b) %in% lowNCounts,], 
+                                colData = colData1b, design = ~ pheno) # 10,395
 des1 <- DESeq(des1)
+des1b <- DESeq(des1b) 
+
+# Injury v. Serratia infection: infection altered genes
+# AhR antagonist v. Serration infection: AhR dependent genes
+# dsAhR v. dsGFP: AhR dependent genes
+# dsTIEG v. dsGFP: TIEG dependent genes
+# dsAhR v. dsTIEG: genes are affected by both AhR and TIEG.
 
 # Make data.frame of comparisons between priming and Naive:
-contrastDF1 <- data.frame(pheno1 = c("Enterobacter_Priming", "Serratia_Priming", "Serratia_Priming",
-                                     "Enterobacter_infection", "Serratia_Infection",
-                                     "Ent_Prim_p_Ent_inf", "Ser_Prim_p_Ser_inf"),
-                          pheno2 = c("Naive", "Naive", "Enterobacter_Priming", 
-                                     "Injury_Control", "Injury_Control",
-                                     "Enterobacter_infection", "Serratia_Infection"))
+contrastDF1 <- data.frame(pheno1 = c("Serratia_Infection", "AhR_antagonist_p_Serratia_Infection", 
+                                     "dsAhR_p_Serratia_Infection", "dsTieg_p_Serratia_Infection",
+                                     "dsAhR_p_Serratia_Infection"),
+                          pheno2 = c("Injury_Control", "Serratia_Infection", 
+                                     "dsGFP_p_Serratia_Infection", "dsGFP_p_Serratia_Infection",
+                                     "dsTieg_p_Serratia_Infection"))
 
 # Make comparisons:
 contrastDF2 <- list()
@@ -146,64 +166,32 @@ contrastDF2$qvalue[contrastDF2$padj == 1.0]
 
 # Volcano Plots:
 contrastDF2 <- contrastDF2 %>% mutate(Comparison = case_when(
-  pheno2 == "Enterobacter_Priming" & pheno1 ==  "Serratia_Priming" ~ "Serratia vs. Enterobacter",
-  pheno2 == "Naive" & pheno1 == "Serratia_Priming" ~ "Serratia vs. Naive",
-  pheno2 == "Naive" & pheno1 == "Enterobacter_Priming" ~ "Enterobacter vs. Naive",
-  pheno2 == "Injury_Control" & pheno1 == "Enterobacter_infection" ~ "Ent Inf vs Inj Ctrl",
-  pheno2 == "Injury_Control" & pheno1 == "Serratia_Infection" ~ "Ser Inf vs Inj Ctrl",
-  pheno2 == "Enterobacter_infection" & pheno1 == "Ent_Prim_p_Ent_inf" ~ "Ent Prim & Inf vs Ent Inf",
-  pheno2 == "Serratia_Infection" & pheno1 == "Ser_Prim_p_Ser_inf" ~ "Ser Prim & Inf vs Ser Inf"))
-contrastDF2$Comparison <- factor(contrastDF2$Comparison, levels = 
-                                   c("Enterobacter vs. Naive", "Serratia vs. Naive", "Serratia vs. Enterobacter",
-                                     "Ent Inf vs Inj Ctrl", "Ser Inf vs Inj Ctrl", "Ent Prim & Inf vs Ent Inf",
-                                     "Ser Prim & Inf vs Ser Inf"))
+  pheno2 == "Injury_Control" & pheno1 == "Serratia_Infection" ~ "Serratia infection vs. Injury control",
+  pheno2 == "Serratia_Infection" & pheno1 == "AhR_antagonist_p_Serratia_Infection" ~ "AhR antagonist vs. Serration infection",
+  pheno2 == "dsGFP_p_Serratia_Infection" & pheno1 == "dsAhR_p_Serratia_Infection" ~ "dsAhR vs. dsGFP",
+  pheno2 == "dsGFP_p_Serratia_Infection" & pheno1 == "dsTieg_p_Serratia_Infection" ~ "dsTIEG vs. dsGFP",
+  pheno2 == "dsTieg_p_Serratia_Infection" & pheno1 == "dsAhR_p_Serratia_Infection" ~ "dsAhR vs. dsTIEG"))
 
-save("contrastDF2", "df1b", file = paste0("Results/contrastDF2_", gsub("-", "", Sys.Date()), ".RData"))
+# Save it for LB:
+save("contrastDF2", "df1", file = paste0("Results/contrastDF2_", gsub("-", "", Sys.Date()), ".RData"))
 
 # Add labels for volcano plot:
 contrastDF2$volLabel <- ifelse(contrastDF2$qvalue < 0.05 & abs(contrastDF2$log2FoldChange) > 2.5, 
                                gsub("AgaP_", "", contrastDF2$gene), "")
-
-# png(file = paste0("Plots/PrimingVolcano1_", gsub("-","", Sys.Date()),".png"), height = 4, width = 8, units = "in", res = 600)
-set.seed(3333)
-ggplot(contrastDF2 %>% filter(Comparison %in% c("Enterobacter vs. Naive", "Serratia vs. Naive")), 
-       aes(x = log2FoldChange, y = -log10(qvalue), label = volLabel)) + 
-  geom_point(shape = 21, color = "grey30", fill = "dodgerblue", alpha = .5, size = .65) + 
-  geom_text_repel(size = 1.05, segment.colour = "grey30", segment.alpha = .5, segment.size = .25) +
-  geom_vline(xintercept = -2.5, lwd = .25, lty = 2) + geom_vline(xintercept = 2.5, lwd = .25, lty = 2) +
-  geom_hline(yintercept = 1.30103, lwd = .25, lty = 2) + 
-  labs(x = expression(paste(log[2], "(Fold Change)")), y = expression(paste(-log[10], "(q-value)"))) +
-  facet_grid(~Comparison)
-# dev.off()
-
-# png(file = paste0("Plots/PrimingVolcano2_", gsub("-","", Sys.Date()),".png"), height = 4, width = 5, units = "in", res = 600)
-set.seed(3333)
-ggplot(contrastDF2 %>% filter(Comparison %in% c("Serratia vs. Enterobacter")), 
-       aes(x = log2FoldChange, y = -log10(qvalue), label = volLabel)) + 
-  geom_point(shape = 21, color = "grey30", fill = "dodgerblue", alpha = .5, size = .65) + 
-  geom_text_repel(size = 2, segment.colour = "grey30", segment.alpha = .5, segment.size = .25) +
-  geom_vline(xintercept = -2.5, lwd = .25, lty = 2) + geom_vline(xintercept = 2.5, lwd = .25, lty = 2) +
-  geom_hline(yintercept = 1.30103, lwd = .25, lty = 2) + 
-  labs(x = expression(paste(log[2], "(Fold Change)")), y = expression(paste(-log[10], "(q-value)")))
-# dev.off()
-
-# png(file = paste0("Plots/InfectionVolcano_", gsub("-","", Sys.Date()),".png"), height = 8, width = 9, units = "in", res = 600)
-set.seed(3333)
-prevLabs <- c("Ent Inf vs Inj Ctrl" = "Enterobacter Infection vs. Inj Ctrl", 
-              "Ser Inf vs Inj Ctrl" = "Serratia Infection vs Inj Ctrl", 
-              "Ent Prim & Inf vs Ent Inf" = "Enterobacter Priming & Infection vs. Infection Only",
-              "Ser Prim & Inf vs Ser Inf" = "Serratia Priming & Infection vs. Infection Only")
-ggplot(contrastDF2 %>% filter(Comparison %in% c("Ent Inf vs Inj Ctrl", "Ser Inf vs Inj Ctrl", "Ent Prim & Inf vs Ent Inf",
-                                                "Ser Prim & Inf vs Ser Inf")), 
-       aes(x = log2FoldChange, y = -log10(qvalue), label = volLabel)) + 
-  geom_point(shape = 21, color = "grey30", fill = "dodgerblue", alpha = .5, size = .65) + 
-  geom_text_repel(size = 1.05, segment.colour = "grey30", segment.alpha = .5, segment.size = .25) +
-  geom_vline(xintercept = -2.5, lwd = .25, lty = 2) + geom_vline(xintercept = 2.5, lwd = .25, lty = 2) +
-  geom_hline(yintercept = 1.30103, lwd = .25, lty = 2) + 
-  labs(x = expression(paste(log[2], "(Fold Change)")), y = expression(paste(-log[10], "(q-value)"))) +
-  facet_wrap(~Comparison, labeller = labeller(Comparison = prevLabs))
-rm(prevLabs)
-# dev.off()
+comparisons <- unique(contrastDF2$Comparison)
+for(i in 1:length(comparisons)){
+  png(file = paste0("Plots/", gsub("\\.", "", gsub(" ", "_", comparisons[i])), gsub("-","", Sys.Date()),".png"),
+      height = 4, width = 5, units = "in", res = 600)
+  show(ggplot(contrastDF2 %>% filter(Comparison == comparisons[i]), 
+              aes(x = log2FoldChange, y = -log10(qvalue), label = volLabel)) + 
+    geom_point(shape = 21, color = "grey30", fill = "dodgerblue", alpha = .5, size = .65) +
+    geom_text_repel(size = 1.05, segment.colour = "grey30", segment.alpha = .5, segment.size = .25) + 
+    geom_vline(xintercept = -2.5, lwd = .25, lty = 2) + geom_vline(xintercept = 2.5, lwd = .25, lty = 2) +
+    geom_hline(yintercept = 1.30103, lwd = .25, lty = 2) +
+    labs(x = expression(paste(log[2], "(Fold Change)")), y = expression(paste(-log[10], "(q-value)")),
+         title = comparisons[i]))
+  dev.off()
+}
 
 # Wide contrast data.frame:
 contrastDF2wFC <- contrastDF2 %>% select(gene, Comparison, log2FoldChange) %>% 
@@ -221,100 +209,42 @@ contrastDF2w <- contrastDF2w %>% left_join(keggGOAnno)
 # Export:
 writexl::write_xlsx(contrastDF2w, path = paste0("Results/contrastDFw_", gsub("-", "", Sys.Date()), ".xlsx"))
 
-# Infection concordance:
-contrastDF2a <- contrastDF2w %>% filter(`Q_Ent Inf vs Inj Ctrl` < 0.05 | `Q_Ser Inf vs Inj Ctrl` < 0.05) # 3,961 genes
-contrastDF2a$lab <- contrastDF2a$gene
-contrastDF2a$lab[!(abs(contrastDF2a$`FC_Ent Inf vs Inj Ctrl`) > 2.5 | 
-                     abs(contrastDF2a$`FC_Ser Inf vs Inj Ctrl`) > 2.5)] <- ""
-
-png(file = "Plots/InfectionAgreement1.png", height = 5, width = 6, units = "in", res = 300)
-ggplot(contrastDF2a , aes(x = `FC_Ent Inf vs Inj Ctrl`, y = `FC_Ser Inf vs Inj Ctrl`, label = lab)) + 
-  geom_point(color = "dodgerblue", shape = 1, show.legend = FALSE) +
-  geom_text_repel(size = 2, segment.colour = "grey30", segment.alpha = .5) +
-  geom_vline(xintercept = 0, lty = 2, lwd = .25) + geom_hline(yintercept = 0, lty = 2, lwd = .25) +
-  labs(x = "Enterobacter Infection / Injury Control (Log2 FC)", y = "Serratia Infection / Injury Control (Log2 FC)") 
-dev.off()
-rm(contrastDF2a)
-
-# Priming concordant-discordant analysis:
-contrastDF2a <- contrastDF2w %>% filter(`Q_Enterobacter vs. Naive` < 0.05 | `Q_Serratia vs. Naive` < 0.05) # 1,562 genes
-# Determine if concordant:
-constrastDF2b <- contrastDF2a %>% mutate(catE = 
-                         case_when(`Q_Enterobacter vs. Naive` < 0.05 & `FC_Enterobacter vs. Naive` > 0 ~ "up05",
-                                   `Q_Enterobacter vs. Naive` < 0.05 & `FC_Enterobacter vs. Naive` < 0 ~ "down05",
-                                   `Q_Enterobacter vs. Naive` >= 0.05 & `FC_Enterobacter vs. Naive` > 0 ~ "upNS",
-                                   `Q_Enterobacter vs. Naive` >= 0.05 & `FC_Enterobacter vs. Naive` < 0 ~ "downNS"),
-                         catS = 
-                           case_when(`Q_Serratia vs. Naive` < 0.05 & `FC_Serratia vs. Naive` > 0 ~ "up05",
-                                     `Q_Serratia vs. Naive` < 0.05 & `FC_Serratia vs. Naive` < 0 ~ "down05",
-                                     `Q_Serratia vs. Naive` >= 0.05 & `FC_Serratia vs. Naive`> 0 ~ "upNS",
-                                     `Q_Serratia vs. Naive` >= 0.05 & `FC_Serratia vs. Naive` < 0 ~ "downNS"))
-xtabs(~catE + catS, data = constrastDF2b)
-writexl::write_xlsx(constrastDF2b, path = paste0("Results/contrastDF2b_Priming_", gsub("-", "", Sys.Date()), ".xlsx"))
-
-# Label some:
-contrastDF2a$lab <- contrastDF2a$gene
-contrastDF2a$lab[!(abs(contrastDF2a$`FC_Enterobacter vs. Naive`) > 2.5 | 
-                     abs(contrastDF2a$`FC_Serratia vs. Naive`) > 2.5)] <- ""
-
-# png(file = "Plots/PrimingAgreement1.png", height = 5, width = 6, units = "in", res = 300)
-set.seed(3)
-ggplot(contrastDF2a, aes(x = `FC_Enterobacter vs. Naive`, y = `FC_Serratia vs. Naive`, label = lab)) + 
-  geom_point(color = "dodgerblue", shape = 1, show.legend = FALSE) + 
-  geom_text_repel(size = 2, segment.colour = "grey30", segment.alpha = .5) +
-  geom_vline(xintercept = 0, lty = 2, lwd = .25) + geom_hline(yintercept = 0, lty = 2, lwd = .25) +
-  labs(x = "Enterobacter Priming / Naive (Log2 FC)", y = "Serratia Priming / Naive (Log2 FC)") 
-# dev.off()
-
-# Comparison of priming types:
-contrastDF2c <- contrastDF2 %>% filter(pheno1 == "Enterobacter_Priming" & pheno2 == "Serratia_Priming" & qvalue < .05)
-
 rm(constrastDF2b, contrastDF1, contrastDF2a, contrastDF2w, contrastDF2wQ, contrastDF2wFC, lowNCounts, des0,
    res0, temp1, i, filter1, rmExtra1, filter1b, contrastDF2c)
 
 ############ Transformation & Entropy / Significance filtering ############
 # Get regularized log expression:
 rlog1 <- rlog(des1, blind = TRUE)
-rlog1b <- rlog(des1b, blind = TRUE)
 rlog1 <- assay(rlog1)
-rlog1b <- assay(rlog1b)
 rlog1 <- t(rlog1)
+
+rlog1b <- rlog(des1b, blind = TRUE)
+rlog1b <- assay(rlog1b)
 rlog1b <- t(rlog1b)
 
-# rlogPrime <- rlog1[, grepl("Serratia Priming", colnames(rlog1)) | grepl("Enterobacter Priming", colnames(rlog1)) |
-#                                                       grepl("Naive", colnames(rlog1))]
-
 # Information gain:
-rlog1Temp <- as.data.frame(rlog1)
-rlog1Tempb <- as.data.frame(rlog1b)
+rlog1Temp <- as.data.frame(rlog1b)
 
 rlog1Temp$oldSampName <- rownames(rlog1Temp)
-rlog1Tempb$oldSampName <- rownames(rlog1Tempb)
 
-rlog1Temp <- colData1 %>% select(oldSampName, pheno) %>% left_join(rlog1Temp) %>% select(-oldSampName)
-rlog1Tempb <- colData1b %>% select(oldSampName, pheno) %>% left_join(rlog1Tempb) %>% select(-oldSampName)
+rlog1Temp <- colData1b %>% select(oldSampName, pheno) %>% left_join(rlog1Temp) %>% select(-oldSampName)
 
 rlog1Entropy <- FSelectorRcpp::information_gain(pheno ~ ., data = rlog1Temp, type = "gainratio")
-rlog1Entropyb <- FSelectorRcpp::information_gain(pheno ~ ., data = rlog1Tempb, type = "gainratio")
 
 rlog1Entropy <- rlog1Entropy %>% select(gene = attributes, infoGain = importance)
-rlog1Entropyb <- rlog1Entropyb %>% select(gene = attributes, infoGain = importance)
 
 # Entropy filter:
 entropyFun <- function(x) entropy::entropy(entropy::discretize(x, 8), unit = "log2")
 colEntropies <- apply(as.matrix(rlog1), 2, entropyFun)
 rlog1Entropy <- rlog1Entropy %>% left_join(data.frame(gene = names(colEntropies), entropy = colEntropies))
 
-colEntropiesb <- apply(as.matrix(rlog1b), 2, entropyFun)
-rlog1Entropyb <- rlog1Entropyb %>% left_join(data.frame(gene = names(colEntropiesb), entropy = colEntropiesb))
-
-rm(rlog1Temp, rlog1Tempb, colEntropies, colEntropiesb)
+rm(rlog1Temp, colEntropies)
 
 # Histograms
-hist(rlog1Entropyb$entropy)
-hist(rlog1Entropyb$infoGain)
-median(rlog1Entropyb$entropy)
-median(rlog1Entropyb$infoGain)
+hist(rlog1Entropy$entropy)
+hist(rlog1Entropy$infoGain)
+median(rlog1Entropy$entropy)
+median(rlog1Entropy$infoGain)
 
 ############ Multivariate visualization ############
 pca1 <- prcomp(scale(rlog1, scale = FALSE))
@@ -322,17 +252,17 @@ pca1Scores <- as.data.frame(pca1$x[,1:4])
 pca1Scores$oldSampName <- rownames(pca1Scores)
 pca1Scores <- colData1 %>% left_join(pca1Scores)
 
-# png(filename = "Plots/PC1vsPC2.png", height = 4.5, width = 6.5, units = "in", res = 300)
+png(filename = "Plots/PC1vsPC2.png", height = 4.5, width = 7.5, units = "in", res = 300)
 set.seed(3)
 ggplot(pca1Scores, aes(x = PC1, y = PC2, color = pheno, label = oldSampName)) + geom_point() +
   geom_text_repel(size = 2)
-# dev.off()
+dev.off()
 
-# png(filename = "Plots/PC3vsPC4.png", height = 4.5, width = 6.5, units = "in", res = 300)
+png(filename = "Plots/PC3vsPC4.png", height = 4.5, width = 7.5, units = "in", res = 300)
 set.seed(3)
 ggplot(pca1Scores, aes(x = PC3, y = PC4, color = pheno, label = oldSampName)) + geom_point() +
   geom_text_repel(size = 2)
-# dev.off()
+dev.off()
 
 PCA3D <- plotly::plot_ly(pca1Scores, x = ~PC1, y = ~PC3, z = ~PC4, color = ~pheno)
 PCA3D <- PCA3D %>% plotly::add_markers()
@@ -341,9 +271,9 @@ PCA3D <- PCA3D %>% plotly::layout(scene = list(xaxis = list(title = 'PC1'),
                                    zaxis = list(title = 'PC4')))
 PCA3D
 
-# png(filename = "Plots/hclust.png", height = 6.5, width = 6.5, units = "in", res = 300)
+png(filename = "Plots/hclust.png", height = 6.5, width = 6.5, units = "in", res = 300)
 plot(hclust(dist(rlog1), method = "ward.D2"))
-# dev.off()
+dev.off()
 
 ############ Sensitivity analysis ############
 pca2 <- prcomp(scale(rlog1b, scale = FALSE))
@@ -352,21 +282,21 @@ pca2Scores <- as.data.frame(pca2$x[,1:4])
 pca2Scores$oldSampName <- rownames(pca2Scores)
 pca2Scores <- colData1 %>% inner_join(pca2Scores)
 
-# png(filename = "Plots/PC1vsPC2_sens.png", height = 4.5, width = 6.5, units = "in", res = 300)
+png(filename = "Plots/PC1vsPC2_sens.png", height = 4.5, width = 7.5, units = "in", res = 300)
 set.seed(3)
 ggplot(pca2Scores, aes(x = PC1, y = PC2, color = pheno, label = oldSampName)) + geom_point() +
   geom_text_repel(size = 2)
-# dev.off()
+dev.off()
 
-# png(filename = "Plots/PC3vsPC4_sens.png", height = 4.5, width = 6.5, units = "in", res = 300)
+png(filename = "Plots/PC3vsPC4_sens.png", height = 4.5, width = 7.5, units = "in", res = 300)
 set.seed(3)
 ggplot(pca2Scores, aes(x = PC3, y = PC4, color = pheno, label = oldSampName)) + geom_point() +
   geom_text_repel(size = 2)
-# dev.off()
+dev.off()
 
-# png(filename = "Plots/hclust_sens.png", height = 6.5, width = 6.5, units = "in", res = 300)
+png(filename = "Plots/hclust_sens.png", height = 6.5, width = 6.5, units = "in", res = 300)
 plot(hclust(dist(rlog1b), method = "ward.D2"))
-# dev.off()
+dev.off()
 
 rm(pca1, pca2, pca1Scores, pca2Scores, PCA3D, colEntropies, colEntropiesb)
 
