@@ -14,7 +14,7 @@ library("tibble")
 library("ggplot2")
 library("KEGGREST")
 
-setwd("/Users/sambot/Desktop/Las_Cruces/Xu_mosquito_transcriptomics/")
+setwd("./Data")
 
 # Note: To get the GO terms for GSEA we need to get the mappings per gene from biomaRt
 # but biomaRt does not have the NCBI gene symbol annotations that were used for
@@ -29,10 +29,11 @@ setwd("/Users/sambot/Desktop/Las_Cruces/Xu_mosquito_transcriptomics/")
 
 ##### Loading data and transforming #####
 # Loading DESeq2 results from Patrick
-load("contrastDF2_20200614.RData")
+load("contrastDF2_20200822.RData")
 # Removing the leading AgaP_ from the gene names to get ensembl ids
 # contrastDF2$gene <- gsub("AgaP_", "", contrastDF2$gene)
 
+setwd("/Users/sambot/Desktop/Las_Cruces/Xu_mosquito_transcriptomics/")
 # Loading uniprot accession to id mapping file; retrieved from https://www.uniprot.org/uniprot/?query=taxonomy:7165 on 6/6/20
 uniprot_taxonomy <- read.csv("uniprot_taxonomy.csv", stringsAsFactors=F)
 # Isolating only the ensembl ids from the Gene.name column
@@ -114,15 +115,15 @@ for (gene in contrastDF2$gene[grep("^AGAP", contrastDF2$gene)]) {
   contrastDF2$ensembl_id[contrastDF2$gene==gene] <- gene
 }
 
-#write.csv(contrastDF2, "contrastDF2_ensembl_ids2.csv", row.names=F)
-contrast <- read.csv("contrastDF2_ensembl_ids2.csv", stringsAsFactors=F)
+write.csv(contrastDF2, "/Users/sambot/Desktop/Las_Cruces/mosquitoTranscriptomics/AhR/Data/contrastDF2_ensembl_ids.csv", row.names=F)
+contrast <- read.csv("/Users/sambot/Desktop/Las_Cruces/mosquitoTranscriptomics/AhR/Data/contrastDF2_ensembl_ids.csv", stringsAsFactors=F)
 # Adding an id to use for KEGG GSEA (made up of genes and ensembl ids)
 contrast$kegg_id <- ifelse(contrast$gene %in% kegg_pathways2$gene, contrast$gene, contrast$ensembl_id)
 
 # Getting gene names from contrast file that didn't map to an ensembl id
 test4 <- contrastDF2[contrastDF2$ensembl_id == "NA",]
-    # 32 genes without ensembl ids
-#write.csv(unique(test4$gene), "unmapped2.csv", row.names = F)
+    # 28 genes without ensembl ids
+#write.csv(unique(test4$gene), "unmapped.csv", row.names = F)
 
 # Create a module list for GSEA based on GO terms from biomart
 gene_list <- list()
@@ -155,25 +156,22 @@ GO_biological_process <- unique(paste(GO_biological_process$go_id, GO_biological
 #gene_count <- test %>% group_by(namespace_1003) %>% count(go_id)
 
 #### Seperate contrast file into the different comparisons ####
-enter_vs_naive_contrast <- filter(contrast, Comparison == "Enterobacter vs. Naive")
-serr_vs_naive_contrast <- filter(contrast, Comparison == "Serratia vs. Naive")
-serr_vs_enter_contrast <- filter(contrast, Comparison == "Serratia vs. Enterobacter")
-enter_inf_vs_inj_ctrl_contrast <- filter(contrast, Comparison == "Ent Inf vs Inj Ctrl")
-serr_inf_vs_inj_ctrl_contrast <- filter(contrast, Comparison == "Ser Inf vs Inj Ctrl")
-enter_prim_inf_vs_enter_inf_contrast <- filter(contrast, Comparison == "Ent Prim & Inf vs Ent Inf")
-serr_prim_inf_vs_serr_inf_contrast <- filter(contrast, Comparison == "Ser Prim & Inf vs Ser Inf")
+serr_inf_vs_injury_ctrl_contrast <- filter(contrast, Comparison == "Serratia infection vs. Injury control")
+ahr_antag_vs_serr_inf_contrast <- filter(contrast, Comparison == "AhR antagonist vs. Serration infection")
+dsAhR_vs_dsGFP_contrast <- filter(contrast, Comparison == "dsAhR vs. dsGFP")
+dsTIEG_vs_dsGFP_contrast <- filter(contrast, Comparison == "dsTIEG vs. dsGFP")
+dsAhR_vs_dsTIEG_contrast <- filter(contrast, Comparison == "dsAhR vs. dsTIEG")
 
-enter_vs_naive_contrast$stat <- abs(enter_vs_naive_contrast$stat)
-serr_vs_naive_contrast$stat <- abs(serr_vs_naive_contrast$stat)
-serr_vs_enter_contrast$stat <- abs(serr_vs_enter_contrast$stat)
-enter_inf_vs_inj_ctrl_contrast$stat <- abs(enter_inf_vs_inj_ctrl_contrast$stat)
-serr_inf_vs_inj_ctrl_contrast$stat <- abs(serr_inf_vs_inj_ctrl_contrast$stat)
-enter_prim_inf_vs_enter_inf_contrast$stat <- abs(enter_prim_inf_vs_enter_inf_contrast$stat)
-serr_prim_inf_vs_serr_inf_contrast$stat <- abs(serr_prim_inf_vs_serr_inf_contrast$stat)
+serr_inf_vs_injury_ctrl_contrast$stat <- abs(serr_inf_vs_injury_ctrl_contrast$stat)
+ahr_antag_vs_serr_inf_contrast$stat <- abs(ahr_antag_vs_serr_inf_contrast$stat)
+dsAhR_vs_dsGFP_contrast$stat <- abs(dsAhR_vs_dsGFP_contrast$stat)
+dsTIEG_vs_dsGFP_contrast$stat <- abs(dsTIEG_vs_dsGFP_contrast$stat)
+dsAhR_vs_dsTIEG_contrast$stat <- abs(dsAhR_vs_dsTIEG_contrast$stat)
+
 
 
 # Create a preranked list of ensembl_ids
-ranked_gene_list1 <- enter_vs_naive_contrast %>% 
+ranked_gene_list1 <- serr_inf_vs_injury_ctrl_contrast %>% 
   dplyr::select(ensembl_id, stat) %>% 
   filter(ensembl_id != "NA") %>% 
   distinct() %>% 
@@ -183,7 +181,7 @@ ranked_gene_list1 <- enter_vs_naive_contrast %>%
 
 ranked_gene_list1 <- deframe(ranked_gene_list1)
 
-ranked_gene_list2 <- serr_vs_naive_contrast %>% 
+ranked_gene_list2 <- ahr_antag_vs_serr_inf_contrast %>% 
   dplyr::select(ensembl_id, stat) %>% 
   filter(ensembl_id != "NA") %>% 
   distinct() %>% 
@@ -193,7 +191,7 @@ ranked_gene_list2 <- serr_vs_naive_contrast %>%
 
 ranked_gene_list2 <- deframe(ranked_gene_list2)
 
-ranked_gene_list3 <- serr_vs_enter_contrast %>% 
+ranked_gene_list3 <- dsAhR_vs_dsGFP_contrast %>% 
   dplyr::select(ensembl_id, stat) %>% 
   filter(ensembl_id != "NA") %>% 
   distinct() %>% 
@@ -203,7 +201,7 @@ ranked_gene_list3 <- serr_vs_enter_contrast %>%
 
 ranked_gene_list3 <- deframe(ranked_gene_list3)
 
-ranked_gene_list4 <- enter_inf_vs_inj_ctrl_contrast %>% 
+ranked_gene_list4 <- dsTIEG_vs_dsGFP_contrast %>% 
   dplyr::select(ensembl_id, stat) %>% 
   filter(ensembl_id != "NA") %>% 
   distinct() %>% 
@@ -213,7 +211,7 @@ ranked_gene_list4 <- enter_inf_vs_inj_ctrl_contrast %>%
 
 ranked_gene_list4 <- deframe(ranked_gene_list4)
 
-ranked_gene_list5 <- serr_inf_vs_inj_ctrl_contrast %>% 
+ranked_gene_list5 <- dsAhR_vs_dsTIEG_contrast %>% 
   dplyr::select(ensembl_id, stat) %>% 
   filter(ensembl_id != "NA") %>% 
   distinct() %>% 
@@ -223,48 +221,27 @@ ranked_gene_list5 <- serr_inf_vs_inj_ctrl_contrast %>%
 
 ranked_gene_list5 <- deframe(ranked_gene_list5)
 
-ranked_gene_list6 <- enter_prim_inf_vs_enter_inf_contrast %>% 
-  dplyr::select(ensembl_id, stat) %>% 
-  filter(ensembl_id != "NA") %>% 
-  distinct() %>% 
-  group_by(ensembl_id) %>% 
-  summarize(stat=mean(stat)) %>%
-  arrange(desc(stat))
 
-ranked_gene_list6 <- deframe(ranked_gene_list6)
-
-ranked_gene_list7 <- serr_prim_inf_vs_serr_inf_contrast %>% 
-  dplyr::select(ensembl_id, stat) %>% 
-  filter(ensembl_id != "NA") %>% 
-  distinct() %>% 
-  group_by(ensembl_id) %>% 
-  summarize(stat=mean(stat)) %>%
-  arrange(desc(stat))
-
-ranked_gene_list7 <- deframe(ranked_gene_list7)
 
 
 ###### GSEA #######
-fgseaRes_enter_vs_naive <- fgsea(pathways=gene_list, stats=ranked_gene_list1)
-fgseaRes_serr_vs_naive <- fgsea(pathways=gene_list, stats=ranked_gene_list2)
-fgseaRes_serr_vs_enter <- fgsea(pathways=gene_list, stats=ranked_gene_list3)
-fgseaRes_enter_inf_vs_inj_ctrl <- fgsea(pathways=gene_list, stats=ranked_gene_list4)
-fgseaRes_serr_inf_vs_inj_ctrl <- fgsea(pathways=gene_list, stats=ranked_gene_list5)
-fgseaRes_enter_prim_inf_vs_enter_inf <- fgsea(pathways=gene_list, stats=ranked_gene_list6)
-fgseaRes_serr_prim_inf_vs_serr_inf <- fgsea(pathways=gene_list, stats=ranked_gene_list7)
+fgseaRes_serr_inf_vs_injury_ctrl_contrast <- fgsea(pathways=gene_list, stats=ranked_gene_list1)
+fgseaRes_ahr_antag_vs_serr_inf_contrast <- fgsea(pathways=gene_list, stats=ranked_gene_list2)
+fgseaRes_dsAhR_vs_dsGFP_contrast <- fgsea(pathways=gene_list, stats=ranked_gene_list3)
+fgseaRes_dsTIEG_vs_dsGFP_contrast <- fgsea(pathways=gene_list, stats=ranked_gene_list4)
+fgseaRes_dsAhR_vs_dsTIEG_contrast <- fgsea(pathways=gene_list, stats=ranked_gene_list5)
 
-# write.csv(fgseaRes_enter_vs_naive[,1:7], "fgseaRes_enter_vs_naive_GO.csv", row.names=F)
-# write.csv(fgseaRes_serr_vs_naive[,1:7], "fgseaRes_serr_vs_naive_GO.csv", row.names=F)
-# write.csv(fgseaRes_serr_vs_enter[,1:7], "fgseaRes_serr_vs_enter_GO.csv", row.names=F)
-# write.csv(fgseaRes_enter_inf_vs_inj_ctrl[,1:7], "fgseaRes_enter_inf_vs_inj_ctrl_GO.csv", row.names=F)
-# write.csv(fgseaRes_serr_inf_vs_inj_ctrl[,1:7], "fgseaRes_serr_inf_vs_inj_ctrl_GO.csv", row.names=F)
-# write.csv(fgseaRes_enter_prim_inf_vs_enter_inf[,1:7], "fgseaRes_enter_prim_inf_vs_enter_inf_GO.csv", row.names=F)
-# write.csv(fgseaRes_serr_prim_inf_vs_serr_inf[,1:7], "fgseaRes_serr_prim_inf_vs_serr_inf_GO.csv", row.names=F)
+setwd("/Users/sambot/Desktop/Las_Cruces/mosquitoTranscriptomics/AhR/results/")
+write.csv(fgseaRes_serr_inf_vs_injury_ctrl_contrast[,1:7], "fgseaRes_serr_inf_vs_injury_ctrl_GO.csv", row.names=F)
+write.csv(fgseaRes_ahr_antag_vs_serr_inf_contrast[,1:7], "fgseaRes_ahr_antag_vs_serr_inf_GO.csv", row.names=F)
+write.csv(fgseaRes_dsAhR_vs_dsGFP_contrast[,1:7], "fgseaRes_dsAhR_vs_dsGFP_GO.csv", row.names=F)
+write.csv(fgseaRes_dsTIEG_vs_dsGFP_contrast[,1:7], "fgseaRes_dsTIEG_vs_dsGFP_GO.csv", row.names=F)
+write.csv(fgseaRes_dsAhR_vs_dsTIEG_contrast[,1:7], "fgseaRes_dsAhR_vs_dsTIEG_GO.csv", row.names=F)
 
 
 ###### Plots #######
-#png("enter_vs_naive_GO_GSEA.png", width = 600, height = 400)
-a <- ggplot(top_n(filter(fgseaRes_enter_vs_naive, padj<0.05 & pathway %in% GO_biological_process), -20, padj), aes(x=reorder(pathway, -padj), y=-log10(padj), color=NES)) +
+#png("serr_inf_vs_injury_ctrl_GO_GSEA.png", width = 600, height = 400)
+a <- ggplot(top_n(filter(fgseaRes_serr_inf_vs_injury_ctrl_contrast, padj<0.05 & pathway %in% GO_biological_process), -20, padj), aes(x=reorder(pathway, -padj), y=-log10(padj), color=NES)) +
   geom_point(aes(size=size)) + 
   scale_colour_gradient(low="green",high="red") +
   #scale_size_area(limits = c(0,225)) +
@@ -274,9 +251,9 @@ a <- ggplot(top_n(filter(fgseaRes_enter_vs_naive, padj<0.05 & pathway %in% GO_bi
   theme_bw() +
   theme(axis.text.y = element_text(face = "bold", vjust = 0.5), plot.title = element_text(size=10)) +
   labs(x="Pathway", y="-log10(q-value)",
-       title="Biological Process GO terms Enrichment from GSEA \n(Enterobacter vs. Naive)") 
+       title="Biological Process GO terms Enrichment from GSEA \n(Serratia infection vs. Injury control)") 
 #dev.off()
-b <- ggplot(top_n(filter(fgseaRes_enter_vs_naive, padj<0.05 & pathway %in% GO_cellular_component), -20, padj), aes(x=reorder(pathway, -padj), y=-log10(padj), color=NES)) +
+b <- ggplot(top_n(filter(fgseaRes_serr_inf_vs_injury_ctrl_contrast, padj<0.05 & pathway %in% GO_cellular_component), -20, padj), aes(x=reorder(pathway, -padj), y=-log10(padj), color=NES)) +
   geom_point(aes(size=size)) + 
   scale_colour_gradient(low="green",high="red") +
   #scale_size_area(limits = c(0,225)) +
@@ -286,8 +263,8 @@ b <- ggplot(top_n(filter(fgseaRes_enter_vs_naive, padj<0.05 & pathway %in% GO_ce
   theme_bw() +
   theme(axis.text.y = element_text(face = "bold", vjust = 0.5), plot.title = element_text(size=10)) +
   labs(x="Pathway", y="-log10(q-value)",
-       title="Cellular Component GO terms Enrichment from GSEA \n(Enterobacter vs. Naive)") 
-c <- ggplot(top_n(filter(fgseaRes_enter_vs_naive, padj<0.05 & pathway %in% GO_molecular_function), -20, padj), aes(x=reorder(pathway, -padj), y=-log10(padj), color=NES)) +
+       title="Cellular Component GO terms Enrichment from GSEA \n(Serratia infection vs. Injury control)") 
+c <- ggplot(top_n(filter(fgseaRes_serr_inf_vs_injury_ctrl_contrast, padj<0.05 & pathway %in% GO_molecular_function), -20, padj), aes(x=reorder(pathway, -padj), y=-log10(padj), color=NES)) +
   geom_point(aes(size=size)) + 
   scale_colour_gradient(low="green",high="red") +
   #scale_size_area(limits = c(0,225)) +
@@ -297,21 +274,21 @@ c <- ggplot(top_n(filter(fgseaRes_enter_vs_naive, padj<0.05 & pathway %in% GO_mo
   theme_bw() +
   theme(axis.text.y = element_text(face = "bold", vjust = 0.5), plot.title = element_text(size=10)) +
   labs(x="Pathway", y="-log10(q-value)",
-       title="Molecular Function GO terms Enrichment from GSEA \n(Enterobacter vs. Naive)") 
+       title="Molecular Function GO terms Enrichment from GSEA \n(Serratia infection vs. Injury control)") 
 
-ggplot(top_n(filter(fgseaRes_enter_inf_vs_inj_ctrl, padj<0.05), -20, padj), aes(x=reorder(pathway, -padj), y=-log10(padj), color=NES)) +
+ggplot(top_n(filter(fgseaRes_ahr_antag_vs_serr_inf_contrast, padj<0.05), -20, padj), aes(x=reorder(pathway, -padj), y=-log10(padj), color=NES)) +
   geom_point(aes(size=size)) + 
   scale_colour_gradient(low="green",high="red") +
   #scale_size_area(limits = c(0,225)) +
-  scale_y_continuous(limits=c(0,2), expand=c(0,0)) +
+  scale_y_continuous(limits=c(0,1.5), expand=c(0,0)) +
   geom_segment( aes(x=pathway, xend=pathway, y=0, yend=-log10(padj))) +
   coord_flip() +
   theme_bw() +
   theme(axis.text.y = element_text(face = "bold", vjust = 0.5), plot.title = element_text(size=10)) +
   labs(x="Pathway", y="-log10(q-value)",
-       title="GO terms Enrichment from GSEA \n(Ent Inf vs Inj Ctrl)") 
+       title="GO terms Enrichment from GSEA \n(AhR antagonist vs. Serration infection)") 
 
-ggplot(top_n(filter(fgseaRes_serr_inf_vs_inj_ctrl, padj<0.05), -20, padj), aes(x=reorder(pathway, -padj), y=-log10(padj), color=NES)) +
+ggplot(top_n(filter(fgseaRes_dsAhR_vs_dsGFP_contrast, padj<0.05), -20, padj), aes(x=reorder(pathway, -padj), y=-log10(padj), color=NES)) +
   geom_point(aes(size=size)) + 
   scale_colour_gradient(low="green",high="red") +
   #scale_size_area(limits = c(0,225)) +
@@ -321,21 +298,21 @@ ggplot(top_n(filter(fgseaRes_serr_inf_vs_inj_ctrl, padj<0.05), -20, padj), aes(x
   theme_bw() +
   theme(axis.text.y = element_text(face = "bold", vjust = 0.5), plot.title = element_text(size=10)) +
   labs(x="Pathway", y="-log10(q-value)",
-       title="GO terms Enrichment from GSEA \n(Ser Inf vs Inj Ctrl)") 
+       title="GO terms Enrichment from GSEA \n(dsAhR vs. dsGFP)") 
 
-ggplot(top_n(filter(fgseaRes_enter_prim_inf_vs_enter_inf, padj<0.05), -20, padj), aes(x=reorder(pathway, -padj), y=-log10(padj), color=NES)) +
+ggplot(top_n(filter(fgseaRes_dsTIEG_vs_dsGFP_contrast, padj<0.05), -20, padj), aes(x=reorder(pathway, -padj), y=-log10(padj), color=NES)) +
   geom_point(aes(size=size)) + 
   scale_colour_gradient(low="green",high="red") +
   #scale_size_area(limits = c(0,225)) +
-  scale_y_continuous(limits=c(0,3.7), expand=c(0,0)) +
+  scale_y_continuous(limits=c(0,2), expand=c(0,0)) +
   geom_segment( aes(x=pathway, xend=pathway, y=0, yend=-log10(padj))) +
   coord_flip() +
   theme_bw() +
   theme(axis.text.y = element_text(face = "bold", vjust = 0.5), plot.title = element_text(size=10)) +
   labs(x="Pathway", y="-log10(q-value)",
-       title="GO terms Enrichment from GSEA \n(Ent Prim & Inf vs Ent Inf)") 
+       title="GO terms Enrichment from GSEA \n(dsTIEG vs. dsGFP)") 
 
-ggplot(top_n(filter(fgseaRes_serr_prim_inf_vs_serr_inf, padj<0.05), -20, padj), aes(x=reorder(pathway, -padj), y=-log10(padj), color=NES)) +
+ggplot(top_n(filter(fgseaRes_dsAhR_vs_dsTIEG_contrast, padj<0.05), -20, padj), aes(x=reorder(pathway, -padj), y=-log10(padj), color=NES)) +
   geom_point(aes(size=size)) + 
   scale_colour_gradient(low="green",high="red") +
   #scale_size_area(limits = c(0,225)) +
@@ -345,7 +322,7 @@ ggplot(top_n(filter(fgseaRes_serr_prim_inf_vs_serr_inf, padj<0.05), -20, padj), 
   theme_bw() +
   theme(axis.text.y = element_text(face = "bold", vjust = 0.5), plot.title = element_text(size=10)) +
   labs(x="Pathway", y="-log10(q-value)",
-       title="GO terms Enrichment from GSEA \n(Ser Prim & Inf vs Ser Inf)") 
+       title="GO terms Enrichment from GSEA \n(dsAhR vs. dsTIEG)") 
 
 
 
@@ -428,7 +405,7 @@ gene_symbols <- data.frame("gene"=(contrastDF2$gene[grep("^[^AGAP]", contrastDF2
 # 2124 genes
 
 
-
+setwd("/Users/sambot/Desktop/Las_Cruces/Xu_mosquito_transcriptomics/")
 # Using table downloaded from kegg to match kegg ids and gene ids
 test33 <- read.csv("mosquito_kegg.csv", header=F)
 test33$gene_id <- gsub("K.*|no| |aga:|AgaP_", "", test33$V1)
