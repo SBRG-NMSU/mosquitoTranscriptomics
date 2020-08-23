@@ -333,14 +333,14 @@ tree <- hclust(as.dist(dissTOM), method = "average")
 
 # Module identification using dynamic tree cut:
 dynamicMods <- dynamicTreeCut::cutreeDynamic(dendro = tree, distM = dissTOM, deepSplit = 2, pamRespectsDendro = TRUE,
-                           minClusterSize = 20, method = "hybrid", cutHeight = .9)
+                           minClusterSize = 20, method = "hybrid", cutHeight = .95)
 dynamicColors <- WGCNA::labels2colors(dynamicMods)
 
 # Plot dendogram and module assignment:
 # png(filename = "Plots/WGCNA_Dendro1.png",height = 6, width = 10, units = "in", res = 600)
 WGCNA::plotDendroAndColors(tree, cbind(dynamicColors), "Module Assignment", dendroLabels = FALSE, hang = 0.0, 
                            addGuide = TRUE, guideHang = 0.0, main = "Gene Modules")
-# dev.off()
+# dev.off() #IDK
 
 # Plot distnace matrix heatmap w/ module assignment
 # png(filename = "Plots/WGCNA_Heatmap1.png", height = 6, width = 6, units = "in", res = 600)
