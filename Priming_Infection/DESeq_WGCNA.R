@@ -146,6 +146,12 @@ des1b <- DESeqDataSetFromMatrix(countData = df1b, colData = colData1b, design = 
 des1 <- DESeq(des1)
 des1b <- DESeq(des1b)
 
+# Export:
+rlog1b <- rlog(des1b, blind = TRUE)
+rlog1b <- assay(rlog1b)
+write.csv(as.data.frame(rlog1b), file = paste0("Results/rlogValues_", gsub("-", "", Sys.Date()), ".csv"))
+rlog1b <- t(rlog1b)
+
 # LRT:
 des0 <- DESeq(des1b, test="LRT", reduced = ~ 1)
 res0 <- as.data.frame(results(des0, cooksCutoff = Inf))
@@ -201,7 +207,7 @@ contrastDF2$Comparison <- factor(contrastDF2$Comparison, levels =
                                      "Ent Inf vs Inj Ctrl", "Ser Inf vs Inj Ctrl", "Ent Prim & Inf vs Ent Inf",
                                      "Ser Prim & Inf vs Ser Inf"))
 
-save("contrastDF2", "df1b", file = paste0("Results/contrastDF2_", gsub("-", "", Sys.Date()), ".RData"))
+# save("contrastDF2", "df1b", file = paste0("Results/contrastDF2_", gsub("-", "", Sys.Date()), ".RData"))
 
 # Add labels for volcano plot:
 contrastDF2$volLabel <- ifelse(contrastDF2$qvalue < 0.05 & abs(contrastDF2$log2FoldChange) > 2.5, 
@@ -262,7 +268,7 @@ contrastDF2w <- contrastDF2wFC %>% left_join(contrastDF2wQ)
 contrastDF2w <- contrastDF2w %>% left_join(keggGOAnno)
 
 # Export:
-writexl::write_xlsx(contrastDF2w, path = paste0("Results/contrastDFw_", gsub("-", "", Sys.Date()), ".xlsx"))
+# writexl::write_xlsx(contrastDF2w, path = paste0("Results/contrastDFw_", gsub("-", "", Sys.Date()), ".xlsx"))
 
 # Infection concordance:
 contrastDF2a <- contrastDF2w %>% filter(`Q_Ent Inf vs Inj Ctrl` < 0.05 | `Q_Ser Inf vs Inj Ctrl` < 0.05) # 3,961 genes
@@ -364,17 +370,18 @@ pca1 <- prcomp(scale(rlog1, scale = FALSE))
 pca1Scores <- as.data.frame(pca1$x[,1:4])
 pca1Scores$oldSampName <- rownames(pca1Scores)
 pca1Scores <- colData1 %>% left_join(pca1Scores)
+summary(pca1)
 
-# png(filename = "Plots/PC1vsPC2.png", height = 4.5, width = 6.5, units = "in", res = 300)
+# png(filename = "Plots/PC1vsPC2_20200926.png", height = 4.5, width = 6.5, units = "in", res = 300)
 set.seed(3)
 ggplot(pca1Scores, aes(x = PC1, y = PC2, color = pheno, label = oldSampName)) + geom_point() +
-  geom_text_repel(size = 2)
+  geom_text_repel(size = 2) + labs(x = "PC1 (42.0% of variance)", y = "PC2 (15.4% of variance)")
 # dev.off()
 
-# png(filename = "Plots/PC3vsPC4.png", height = 4.5, width = 6.5, units = "in", res = 300)
+# png(filename = "Plots/PC3vsPC4_20200926.png", height = 4.5, width = 6.5, units = "in", res = 300)
 set.seed(3)
 ggplot(pca1Scores, aes(x = PC3, y = PC4, color = pheno, label = oldSampName)) + geom_point() +
-  geom_text_repel(size = 2)
+  geom_text_repel(size = 2) + labs(x = "PC3 (11.4% of variance)", y = "PC4 (8.4% of variance)")
 # dev.off()
 
 PCA3D <- plotly::plot_ly(pca1Scores, x = ~PC1, y = ~PC3, z = ~PC4, color = ~pheno)
@@ -395,16 +402,16 @@ pca2Scores <- as.data.frame(pca2$x[,1:4])
 pca2Scores$oldSampName <- rownames(pca2Scores)
 pca2Scores <- colData1 %>% inner_join(pca2Scores)
 
-# png(filename = "Plots/PC1vsPC2_sens.png", height = 4.5, width = 6.5, units = "in", res = 300)
+# png(filename = "Plots/PC1vsPC2_sens_20200926.png", height = 4.5, width = 6.5, units = "in", res = 300)
 set.seed(3)
 ggplot(pca2Scores, aes(x = PC1, y = PC2, color = pheno, label = oldSampName)) + geom_point() +
-  geom_text_repel(size = 2)
+  geom_text_repel(size = 2) + labs(x = "PC1 (33.0% of variance)", y = "PC2 (22.1% of variance)")
 # dev.off()
 
-# png(filename = "Plots/PC3vsPC4_sens.png", height = 4.5, width = 6.5, units = "in", res = 300)
+# png(filename = "Plots/PC3vsPC4_sens_20200926.png", height = 4.5, width = 6.5, units = "in", res = 300)
 set.seed(3)
 ggplot(pca2Scores, aes(x = PC3, y = PC4, color = pheno, label = oldSampName)) + geom_point() +
-  geom_text_repel(size = 2)
+  geom_text_repel(size = 2) + labs(x = "PC3 (13.2% of variance)", y = "PC4 (6.2% of variance)")
 # dev.off()
 
 # png(filename = "Plots/hclust_sens.png", height = 6.5, width = 6.5, units = "in", res = 300)
