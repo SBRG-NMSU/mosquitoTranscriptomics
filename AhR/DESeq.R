@@ -117,6 +117,12 @@ des1 <- DESeq(des1)
 des1b <- DESeqDataSetFromMatrix(countData = df1b, colData = colData1b, design = ~ pheno)
 des1b <- DESeq(des1b) 
 
+# Export:
+rlog1b <- rlog(des1b, blind = TRUE)
+rlog1b <- assay(rlog1b)
+write.csv(as.data.frame(rlog1b), file = paste0("Results/rlogValues_", gsub("-", "", Sys.Date()), ".csv"))
+rlog1b <- t(rlog1b)
+
 # LRT:
 des0 <- DESeq(des1b, test="LRT", reduced = ~ 1)
 res0 <- as.data.frame(results(des0, cooksCutoff = Inf))
@@ -252,16 +258,16 @@ pca1Scores <- as.data.frame(pca1$x[,1:4])
 pca1Scores$oldSampName <- rownames(pca1Scores)
 pca1Scores <- colData1 %>% left_join(pca1Scores)
 
-# png(filename = "Plots/PC1vsPC2.png", height = 4.5, width = 7.5, units = "in", res = 300)
+# png(filename = "Plots/PC1vsPC2_20200926.png", height = 4.5, width = 7.5, units = "in", res = 300)
 set.seed(3)
 ggplot(pca1Scores, aes(x = PC1, y = PC2, color = pheno, label = oldSampName)) + geom_point() +
-  geom_text_repel(size = 2)
+  geom_text_repel(size = 2) + labs(x = "PC1 (60.4% of variance)", y = "PC2 (12.2% of variance)")
 # dev.off()
 
-# png(filename = "Plots/PC3vsPC4.png", height = 4.5, width = 7.5, units = "in", res = 300)
+# png(filename = "Plots/PC3vsPC4_20200926.png", height = 4.5, width = 7.5, units = "in", res = 300)
 set.seed(3)
 ggplot(pca1Scores, aes(x = PC3, y = PC4, color = pheno, label = oldSampName)) + geom_point() +
-  geom_text_repel(size = 2)
+  geom_text_repel(size = 2) + labs(x = "PC3 (6.6% of variance)", y = "PC4 (5.2% of variance)")
 # dev.off()
 
 PCA3D <- plotly::plot_ly(pca1Scores, x = ~PC1, y = ~PC3, z = ~PC4, color = ~pheno)
@@ -282,16 +288,16 @@ pca2Scores <- as.data.frame(pca2$x[,1:4])
 pca2Scores$oldSampName <- rownames(pca2Scores)
 pca2Scores <- colData1 %>% inner_join(pca2Scores)
 
-# png(filename = "Plots/PC1vsPC2_sens.png", height = 4.5, width = 7.5, units = "in", res = 300)
+# png(filename = "Plots/PC1vsPC2_sens_20200926.png", height = 4.5, width = 7.5, units = "in", res = 300)
 set.seed(3)
 ggplot(pca2Scores, aes(x = PC1, y = PC2, color = pheno, label = oldSampName)) + geom_point() +
-  geom_text_repel(size = 2)
+  geom_text_repel(size = 2) + labs(x = "PC1 (60.1% of variance)", y = "PC2 (11.2% of variance)")
 # dev.off()
 
-# png(filename = "Plots/PC3vsPC4_sens.png", height = 4.5, width = 7.5, units = "in", res = 300)
+# png(filename = "Plots/PC3vsPC4_sens_20200926.png", height = 4.5, width = 7.5, units = "in", res = 300)
 set.seed(3)
 ggplot(pca2Scores, aes(x = PC3, y = PC4, color = pheno, label = oldSampName)) + geom_point() +
-  geom_text_repel(size = 2)
+  geom_text_repel(size = 2) + labs(x = "PC3 (7.3% of variance)", y = "PC4 (4.1% of variance)")
 # dev.off()
 
 # png(filename = "Plots/hclust_sens.png", height = 6.5, width = 6.5, units = "in", res = 300)
