@@ -149,7 +149,7 @@ des1b <- DESeq(des1b)
 # Export:
 rlog1b <- rlog(des1b, blind = TRUE)
 rlog1b <- assay(rlog1b)
-write.csv(as.data.frame(rlog1b), file = paste0("Results/rlogValues_", gsub("-", "", Sys.Date()), ".csv"))
+# write.csv(as.data.frame(rlog1b), file = paste0("Results/rlogValues_", gsub("-", "", Sys.Date()), ".csv"))
 rlog1b <- t(rlog1b)
 
 # LRT:
@@ -164,6 +164,10 @@ des1b <- DESeqDataSetFromMatrix(countData = df1b[!rownames(df1b) %in% lowNCounts
                                 colData = colData1b, design = ~ pheno) # 10714
 des1 <- DESeq(des1)
 des1b <- DESeq(des1b)
+
+# Save for restart:
+# save.image('workspace_20201121.RData')
+load('workspace_20201121.RData')
 
 # Make data.frame of comparisons between priming and Naive:
 contrastDF1 <- data.frame(pheno1 = c("Enterobacter_Priming", "Serratia_Priming", "Serratia_Priming",
