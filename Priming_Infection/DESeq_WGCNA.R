@@ -1,4 +1,5 @@
 ############ Prereqs ############
+## Begin always run ##
 options(stringsAsFactors = FALSE, scipen = 900)
 oldPar <- par()
 os <- Sys.info()["sysname"]
@@ -12,6 +13,7 @@ library(ggrepel)
 
 theme_set(theme_bw())
 theme_update(plot.title = element_text(hjust = 0.5))
+## End always run ##
 
 ############ Import and process raw counts ############
 # Count data:
@@ -166,19 +168,24 @@ des1 <- DESeq(des1)
 des1b <- DESeq(des1b)
 
 # Save for restart:
+# load('modules_20201121.RData')
 # save.image('workspace_20201121.RData')
 load('workspace_20201121.RData')
 
 # Make data.frame of comparisons between priming and Naive:
 contrastDF1 <- data.frame(pheno1 = c("Enterobacter_Priming", "Serratia_Priming", "Serratia_Priming",
                                      "Enterobacter_infection", "Serratia_Infection",
-                                     "Ent_Prim_p_Ent_inf", "Ser_Prim_p_Ser_inf"),
+                                     "Ent_Prim_p_Ent_inf", "Ser_Prim_p_Ser_inf",
+                                     "Ent_Prim_p_Ser_inf", "Ser_Prim_p_Ent_inf",
+                                     "Ser_Prim_p_Ser_inf", "Ser_Prim_p_Ent_inf"),
                           pheno2 = c("Naive", "Naive", "Enterobacter_Priming", 
                                      "Injury_Control", "Injury_Control",
-                                     "Enterobacter_infection", "Serratia_Infection"))
+                                     "Enterobacter_infection", "Serratia_Infection",
+                                     "Serratia_Infection", "Enterobacter_infection",
+                                     "Ent_Prim_p_Ser_inf", "Ent_Prim_p_Ent_inf"))
 
 # Make comparisons:
-contrastDF2 <- list()
+contrastDF2_1 <- contrastDF2_2 <- list()
 for(i in 1:nrow(contrastDF1)){
   temp1 <- as.data.frame(results(des1b, contrast = c("pheno", contrastDF1$pheno1[i], contrastDF1$pheno2[i]), cooksCutoff = Inf))
   temp1$lfcLower <- temp1$log2FoldChange - qnorm(0.975) * temp1$lfcSE
@@ -186,12 +193,20 @@ for(i in 1:nrow(contrastDF1)){
   temp1$pheno1 <- contrastDF1$pheno1[i]
   temp1$pheno2 <- contrastDF1$pheno2[i]
   temp1$gene <- rownames(temp1)
-  contrastDF2[[i]] <- temp1
+  if(i %in% 1:7){
+    contrastDF2_1[[i]] <- temp1
+  }else{
+    contrastDF2_2[[i]] <- temp1
+  }
 }
-contrastDF2 <- do.call("rbind", contrastDF2)
+contrastDF2_1 <- do.call("rbind", contrastDF2_1)
+contrastDF2_2 <- do.call("rbind", contrastDF2_2)
 
-# Add FDR preserving q-values:
-contrastDF2$qvalue <- qvalue::qvalue(contrastDF2$pvalue)$qvalues
+# Add FDR preserving q-values (first batch):
+qValues1 <- qvalue::qvalue(contrastDF2_1$pvalue)
+contrastDF2_1$qvalue <- qvalue::qvalue(contrastDF2_1$pvalue)$qvalues
+contrastDF2_2$qvalue <- qvalue::qvalue(contrastDF2_2$pvalue, pi0 = qValues1$pi0)$qvalues
+contrastDF2 <- rbind(contrastDF2_1, contrastDF2_2)
 
 # If p-adjusted is NA make it 1:
 contrastDF2$padj[is.na(contrastDF2$padj)] <- 1.0
@@ -205,11 +220,21 @@ contrastDF2 <- contrastDF2 %>% mutate(Comparison = case_when(
   pheno2 == "Injury_Control" & pheno1 == "Enterobacter_infection" ~ "Ent Inf vs Inj Ctrl",
   pheno2 == "Injury_Control" & pheno1 == "Serratia_Infection" ~ "Ser Inf vs Inj Ctrl",
   pheno2 == "Enterobacter_infection" & pheno1 == "Ent_Prim_p_Ent_inf" ~ "Ent Prim & Inf vs Ent Inf",
-  pheno2 == "Serratia_Infection" & pheno1 == "Ser_Prim_p_Ser_inf" ~ "Ser Prim & Inf vs Ser Inf"))
+  pheno2 == "Serratia_Infection" & pheno1 == "Ser_Prim_p_Ser_inf" ~ "Ser Prim & Inf vs Ser Inf",
+  pheno2 == "Serratia_Infection" & pheno1 == "Ent_Prim_p_Ser_inf" ~ "Ent Prim & Ser Inf vs Ser Inf",
+  pheno2 == "Enterobacter_infection" & pheno1 == "Ser_Prim_p_Ent_inf" ~ "Ser Prim & Ent Inf vs Ent Inf",
+  pheno2 == "Ent_Prim_p_Ser_inf" & pheno1 == "Ser_Prim_p_Ser_inf" ~ "Ser Prim & Ser Inf vs Ent Prim & Ser Inf",
+  pheno2 == "Ent_Prim_p_Ent_inf" & pheno1 == "Ser_Prim_p_Ent_inf" ~ "Ser Prim & Ser Inf vs Ent Prim & Ent Inf"))
 contrastDF2$Comparison <- factor(contrastDF2$Comparison, levels = 
                                    c("Enterobacter vs. Naive", "Serratia vs. Naive", "Serratia vs. Enterobacter",
                                      "Ent Inf vs Inj Ctrl", "Ser Inf vs Inj Ctrl", "Ent Prim & Inf vs Ent Inf",
-                                     "Ser Prim & Inf vs Ser Inf"))
+                                     "Ser Prim & Inf vs Ser Inf", "Ent Prim & Ser Inf vs Ser Inf",
+                                     "Ser Prim & Ent Inf vs Ent Inf", "Ser Prim & Ser Inf vs Ent Prim & Ser Inf",
+                                     "Ser Prim & Ser Inf vs Ent Prim & Ent Inf"))
+
+# Save for restart:
+# save.image('workspace_20201121.RData')
+load('workspace_20201121.RData')
 
 # save("contrastDF2", "df1b", file = paste0("Results/contrastDF2_", gsub("-", "", Sys.Date()), ".RData"))
 
@@ -271,26 +296,33 @@ contrastDF2w <- contrastDF2wFC %>% left_join(contrastDF2wQ)
 # Join with KEGG and GO annotation data:
 contrastDF2w <- contrastDF2w %>% left_join(keggGOAnno)
 
+# Join modules and contrasts -- added 20201121:
+contrastDF2w <- contrastDF2w %>% left_join(modDF)
+
 # Export:
 # writexl::write_xlsx(contrastDF2w, path = paste0("Results/contrastDFw_", gsub("-", "", Sys.Date()), ".xlsx"))
 
+# Exclude list:
+exc <- contrastDF2w$gene[grepl("SRP_euk|rRNA|RNase|U6", contrastDF2w$gene)]
+
 # Infection concordance:
-contrastDF2a <- contrastDF2w %>% filter(`Q_Ent Inf vs Inj Ctrl` < 0.05 | `Q_Ser Inf vs Inj Ctrl` < 0.05) # 3,961 genes
+contrastDF2a <- contrastDF2w %>% filter((`Q_Ent Inf vs Inj Ctrl` < 0.05 | `Q_Ser Inf vs Inj Ctrl` < 0.05) & !(gene %in% exc)) # 3,947 genes
 contrastDF2a$lab <- contrastDF2a$gene
 contrastDF2a$lab[!(abs(contrastDF2a$`FC_Ent Inf vs Inj Ctrl`) > 2.5 | 
                      abs(contrastDF2a$`FC_Ser Inf vs Inj Ctrl`) > 2.5)] <- ""
+table(contrastDF2a$lab)
 
-png(file = "Plots/InfectionAgreement1.png", height = 5, width = 6, units = "in", res = 300)
+# png(file = "Plots/InfectionAgreement1.png", height = 5, width = 6, units = "in", res = 300)
 ggplot(contrastDF2a , aes(x = `FC_Ent Inf vs Inj Ctrl`, y = `FC_Ser Inf vs Inj Ctrl`, label = lab)) + 
   geom_point(color = "dodgerblue", shape = 1, show.legend = FALSE) +
   geom_text_repel(size = 2, segment.colour = "grey30", segment.alpha = .5) +
   geom_vline(xintercept = 0, lty = 2, lwd = .25) + geom_hline(yintercept = 0, lty = 2, lwd = .25) +
   labs(x = "Enterobacter Infection / Injury Control (Log2 FC)", y = "Serratia Infection / Injury Control (Log2 FC)") 
-dev.off()
-rm(contrastDF2a)
+# dev.off()
+# rm(contrastDF2a)
 
 # Priming concordant-discordant analysis:
-contrastDF2a <- contrastDF2w %>% filter(`Q_Enterobacter vs. Naive` < 0.05 | `Q_Serratia vs. Naive` < 0.05) # 1,562 genes
+contrastDF2a <- contrastDF2w %>% filter((`Q_Enterobacter vs. Naive` < 0.05 | `Q_Serratia vs. Naive` < 0.05) & !(gene %in% exc)) # 1,562 genes
 # Determine if concordant:
 constrastDF2b <- contrastDF2a %>% mutate(catE = 
                          case_when(`Q_Enterobacter vs. Naive` < 0.05 & `FC_Enterobacter vs. Naive` > 0 ~ "up05",
@@ -303,7 +335,7 @@ constrastDF2b <- contrastDF2a %>% mutate(catE =
                                      `Q_Serratia vs. Naive` >= 0.05 & `FC_Serratia vs. Naive`> 0 ~ "upNS",
                                      `Q_Serratia vs. Naive` >= 0.05 & `FC_Serratia vs. Naive` < 0 ~ "downNS"))
 xtabs(~catE + catS, data = constrastDF2b)
-writexl::write_xlsx(constrastDF2b, path = paste0("Results/contrastDF2b_Priming_", gsub("-", "", Sys.Date()), ".xlsx"))
+# writexl::write_xlsx(constrastDF2b, path = paste0("Results/contrastDF2b_Priming_", gsub("-", "", Sys.Date()), ".xlsx"))
 
 # Label some:
 contrastDF2a$lab <- contrastDF2a$gene
@@ -321,6 +353,35 @@ ggplot(contrastDF2a, aes(x = `FC_Enterobacter vs. Naive`, y = `FC_Serratia vs. N
 
 # Comparison of priming types:
 contrastDF2c <- contrastDF2 %>% filter(pheno1 == "Enterobacter_Priming" & pheno2 == "Serratia_Priming" & qvalue < .05)
+
+# Priming effects agreement plots:
+contrastDF2a <- contrastDF2w %>% 
+  filter((`Q_Ent Prim & Inf vs Ent Inf` < 0.05 | `Q_Ser Prim & Ent Inf vs Ent Inf` < 0.05) & !(gene %in% exc)) # 2,339 genes
+contrastDF2a$lab <- contrastDF2a$gene
+contrastDF2a$lab[!(abs(contrastDF2a$`FC_Ent Prim & Inf vs Ent Inf`) > 2.5 | 
+                     abs(contrastDF2a$`FC_Ser Prim & Ent Inf vs Ent Inf`) > 2.5)] <- ""
+# png(file = "Plots/PrimingAgreement_Entero.png", height = 5, width = 6, units = "in", res = 300)
+ggplot(contrastDF2a, aes(x = `FC_Ent Prim & Inf vs Ent Inf`, y = `FC_Ser Prim & Ent Inf vs Ent Inf`, label = lab)) + 
+  geom_point(color = "dodgerblue", shape = 1, show.legend = FALSE) + 
+  geom_text_repel(size = 2, segment.colour = "grey30", segment.alpha = .5) +
+  geom_vline(xintercept = 0, lty = 2, lwd = .25) + geom_hline(yintercept = 0, lty = 2, lwd = .25) +
+  labs(x = "Enterobacter Priming & Infection / Enterobacter Infection (Log2 FC)", 
+       y = "Serratia Priming & Enterobacter Infection / Enterobacter Infection (Log2 FC)")
+# dev.off()
+
+contrastDF2a <- contrastDF2w %>% 
+  filter((`Q_Ser Prim & Inf vs Ser Inf` < 0.05 | `Q_Ent Prim & Ser Inf vs Ser Inf` < 0.05) & !(gene %in% exc)) # 6,212 genes
+contrastDF2a$lab <- contrastDF2a$gene
+contrastDF2a$lab[!(abs(contrastDF2a$`FC_Ser Prim & Inf vs Ser Inf`) > 3.5 | 
+                     abs(contrastDF2a$`FC_Ent Prim & Ser Inf vs Ser Inf`) > 3.5)] <- ""
+png(file = "Plots/PrimingAgreement_Ser.png", height = 5, width = 6, units = "in", res = 300)
+ggplot(contrastDF2a, aes(x = `FC_Ser Prim & Inf vs Ser Inf`, y = `FC_Ent Prim & Ser Inf vs Ser Inf`, label = lab)) + 
+  geom_point(color = "dodgerblue", shape = 1, show.legend = FALSE) + 
+  geom_text_repel(size = 1.5, segment.colour = "grey30", segment.alpha = .25, segment.size = .3) +
+  geom_vline(xintercept = 0, lty = 2, lwd = .25) + geom_hline(yintercept = 0, lty = 2, lwd = .25) +
+  labs(x = "Serratia Priming & Infection / Serratia Infection (Log2 FC)", 
+       y = "Enterobacter Priming & Serratia Infection / Serratia Infection (Log2 FC)")
+dev.off()
 
 rm(constrastDF2b, contrastDF1, contrastDF2a, contrastDF2w, contrastDF2wQ, contrastDF2wFC, lowNCounts, des0,
    res0, temp1, i, filter1, rmExtra1, filter1b, contrastDF2c)
@@ -473,7 +534,7 @@ WGCNA::TOMplot(dissTOM, tree, dynamicColors, main = "Module heatmap")
 
 # Module-gene mapping:
 modDF <- data.frame(gene = rownames(TOM), module = dynamicColors)
-
+save(modDF, file = "modules_20201121.RData")
 mEigen1 <- WGCNA::moduleEigengenes(rlog2b, dynamicColors, impute = FALSE, nPC = 1, align = "along average", 
                                    excludeGrey = TRUE, grey = if (is.numeric(colors)) 0 else "grey", 
                                    softPower = 9, scale = TRUE, verbose = 5, indent = 1)
